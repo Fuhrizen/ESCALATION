@@ -23,19 +23,29 @@ This first iteration focuses on **nation selection, research, industry and logis
 
 Install Docker with Compose v2. On Windows, use Docker Desktop's **Linux containers**. The first build needs internet access for the builder images and the pinned GLFW / Dear ImGui source dependencies.
 
-```sh
-docker compose up --build --exit-code-from linux linux
-docker compose cp linux:/out/linux/. ./dist-linux
+Build and automatically extract with one command. On Linux/macOS:
 
-docker compose up --build --exit-code-from windows windows
-docker compose cp windows:/out/windows/. ./dist-windows
+```sh
+./build.sh linux
+./build.sh windows
+./build.sh all
 ```
+
+On Windows PowerShell:
+
+```powershell
+.\build.ps1 linux
+.\build.ps1 windows
+.\build.ps1 all
+```
+
+Both scripts build the selected service, check its exit code, then extract artifacts into `dist-linux/` or `dist-windows/`. `all` runs both builds sequentially. Extraction is skipped if the build fails, and extraction failures return a nonzero exit code. The scripts resolve the repository directory automatically, so they also work when invoked from another directory.
 
 The Linux service compiles and runs the simulation tests. The Windows service cross-compiles x86-64 Windows executables with MinGW; it does not run Windows executables in the Linux builder.
 
 Outputs stay on your machine:
 
-The builder copies the repository into its image at `/source`; it does not rely on a host source bind mount. Run these commands from the repository root and keep `--build` so source changes are included. Build output stays in a named Docker volume. `docker compose cp` exports it through the Docker client, avoiding host bind-mount write permissions. Keep the stopped service container until you have copied its output; do not use `run --rm` for this workflow.
+The builder copies the repository into its image at `/source`; it does not rely on a host source bind mount. The host scripts always rebuild the image so source changes are included. Build output stays in a named Docker volume. `docker compose cp` exports it through the Docker client, avoiding host bind-mount write permissions. The scripts retain the stopped service container for extraction; manual `run --rm` is not used.
 
 ```text
 dist-linux/escalation

@@ -18,5 +18,4 @@ case "$platform" in
  *) printf 'Unknown platform: %s\n' "$platform" >&2; exit 2 ;;
 esac
 cmake --install /build --prefix "/out/$platform"
-printf 'Build installed in Docker volume at /out/%s. Export it with:\n' "$platform"
-printf '  docker compose cp %s:/out/%s/. ./dist-%s\n' "$platform" "$platform" "$platform"
+printf 'Build installed in Docker volume at /out/%s. The host build script extracts it automatically.\n' "$platform"

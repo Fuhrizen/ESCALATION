@@ -46,3 +46,5 @@ The benchmark excludes map loading, sector generation and rendering. It does not
 ## Host output export fix
 
 The original `/out` host bind mount failed during installation on the user’s host. Both services now install to the `build-output` Docker volume. Build with `docker compose up --build --exit-code-from linux linux`, then export with `docker compose cp linux:/out/linux/. ./dist-linux` (or use the Windows service and `dist-windows`). This also works with a remote Docker daemon and avoids writing to host directories as the container user. The revised export configuration was statically checked here; Docker runtime validation still requires the host.
+
+The root `build.sh` and `build.ps1` now orchestrate build and extraction as one command. Shell orchestration was checked with a stand-in Docker executable for successful Linux/Windows builds, build failures and copy failures. PowerShell and actual Docker execution remain unavailable in this workspace.
