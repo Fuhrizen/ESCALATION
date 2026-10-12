@@ -1,0 +1,14 @@
+.git
+.local_deps
+.test_tmp
+build*/
+dist*/
+.package-*
+core_tests
+escalation_client
+escalation_headless
+smoke/
+cc*.s
+cc*.o
+**/__pycache__
+**/*.pyc

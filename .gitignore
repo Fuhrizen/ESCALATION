@@ -19,3 +19,6 @@ imgui.ini
 /cc*.o
 __pycache__/
 *.pyc
+
+/.package-*
+/dist-*.previous-*

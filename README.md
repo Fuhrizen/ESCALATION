@@ -19,33 +19,26 @@ This first iteration focuses on **nation selection, research, industry and logis
 - Brigade recruitment, war declaration, territorial capture, victory, and a deliberately costly scripted mutual-destruction outcome for nuclear use.
 - Pause, four time speeds, keyboard navigation, country search, tooltips, manual saves, annual autosaves and save-on-exit.
 
-## Local builds with Docker Compose
+## Build on Bazzite with Podman
 
-Install Docker with Compose v2. On Windows, use Docker Desktop's **Linux containers**. The first build needs internet access for the builder images and the pinned GLFW / Dear ImGui source dependencies.
-
-Build and automatically extract with one command. On Linux/macOS:
+Run as your normal user with your installed Podman. No Compose plugin, Docker daemon, host package installation, bind mounts, persistent build volumes or privileged containers are required.
 
 ```sh
-./build.sh linux
-./build.sh windows
-./build.sh all
+git pull
+sh ./build.sh linux
+./dist-linux/escalation
 ```
 
-On Windows PowerShell:
+Cross-compile Windows from the same Bazzite PC, or build both:
 
-```powershell
-.\build.ps1 linux
-.\build.ps1 windows
-.\build.ps1 all
+```sh
+sh ./build.sh windows
+sh ./build.sh all
 ```
 
-Both scripts build the selected service, check its exit code, then extract artifacts into `dist-linux/` or `dist-windows/`. `all` runs both builds sequentially. Extraction is skipped if the build fails, and extraction failures return a nonzero exit code. The scripts resolve the repository directory automatically, so they also work when invoked from another directory.
+The first build needs internet access for `docker.io/library/ubuntu:24.04`, Ubuntu packages and the pinned GLFW / Dear ImGui source tags. Output is x86-64. Linux uses the X11 backend, including XWayland in a Wayland desktop, and requires a working OpenGL 3.3 host driver. The package uses Ubuntu 24.04's glibc baseline; older distributions are not targeted. Run the extracted executable on the host, keeping `data/` next to it.
 
-The Linux service compiles and runs the simulation tests. The Windows service cross-compiles x86-64 Windows executables with MinGW; it does not run Windows executables in the Linux builder.
-
-Outputs stay on your machine:
-
-The builder copies the repository into its image at `/source`; it does not rely on a host source bind mount. The host scripts always rebuild the image so source changes are included. Build output stays in a named Docker volume. `docker compose cp` exports it through the Docker client, avoiding host bind-mount write permissions. The scripts retain the stopped service container for extraction; manual `run --rm` is not used.
+The build compiles **during image construction** using an explicit `Containerfile` and repository context. The Linux image build runs core/projection tests, a real software-OpenGL smoke check and a relocated-package data lookup check. Windows cross-compilation validates package files but does not execute Windows binaries. Only successful builds are extracted: the script creates an unstarted temporary container, copies `/artifacts` to a staging directory, validates the package, removes that container and publishes the host-owned output. Neither source nor output is bind-mounted into a container; SELinux relabelling is unnecessary.
 
 ```text
 dist-linux/escalation
@@ -56,9 +49,17 @@ dist-windows/escalation_headless.exe
 dist-windows/data/
 ```
 
-Launch the executable on the corresponding host OS. Keep its `data/` directory beside it. Docker builds the game; it does not launch the desktop UI. Linux binaries target Ubuntu 24.04 or compatible systems, rather than a universal Linux ABI. The Windows client requires a working OpenGL 3.3 GPU driver. No GitHub Actions or release upload workflow is included.
+Rebuilds keep the last successful package in a `dist-<platform>.previous-<timestamp>-<pid>` directory. Failed builds/copies leave the existing output intact. Incomplete extraction staging directories are retained for inspection. Build images remain local; no executables are uploaded to GitHub. Artifact images are for extraction, not for running the graphical application inside a container.
 
-Build caches use named Docker volumes. To adjust build parallelism, set `JOBS` (default 4). To discard build caches, use `docker compose down --volumes`; copied `dist-linux/` and `dist-windows/` outputs remain.
+The default compile parallelism is two jobs. For a complete rebuild without image-layer reuse:
+
+```sh
+CLEAN_BUILD=1 JOBS=2 sh ./build.sh linux
+```
+
+`CONTAINER_ENGINE=docker sh ./build.sh linux` selects direct Docker commands if explicitly desired. Podman is the default. The old Compose files and container entrypoint build scripts have been removed. Existing volumes from that earlier workflow are not used or deleted.
+
+Validate the host orchestration separately with `python3 tests/test_build_pipeline.py`. Actual Podman/Bazzite execution must be confirmed on a host with Podman; this assistant workspace has neither Podman nor Docker installed.
 
 ## Native development
 
