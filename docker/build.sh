@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 platform="${1:-linux}"
+if [ ! -f /source/CMakeLists.txt ]; then
+ printf 'Project source is missing from the builder image. Run docker compose run --build --rm %s from the repository root.\n' "$platform" >&2
+ exit 1
+fi
 case "$platform" in
  linux)
   cmake -S /source -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release -DFETCHCONTENT_BASE_DIR=/deps/linux

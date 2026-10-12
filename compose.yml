@@ -7,7 +7,6 @@ services:
     environment:
       JOBS: ${JOBS:-4}
     volumes:
-      - .:/source:ro
       - ./dist:/out
       - linux-build:/build
       - dependency-cache:/deps
@@ -20,7 +19,6 @@ services:
     environment:
       JOBS: ${JOBS:-4}
     volumes:
-      - .:/source:ro
       - ./dist:/out
       - windows-build:/build
       - dependency-cache:/deps

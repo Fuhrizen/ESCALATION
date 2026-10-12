@@ -2,6 +2,8 @@ FROM ubuntu:24.04 AS base
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates git cmake ninja-build build-essential && rm -rf /var/lib/apt/lists/*
 COPY docker/build.sh /usr/local/bin/escalation-build
+COPY . /source
+WORKDIR /source
 RUN chmod +x /usr/local/bin/escalation-build
 ENTRYPOINT ["/usr/local/bin/escalation-build"]
 FROM base AS linux-builder

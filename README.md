@@ -32,6 +32,8 @@ The Linux service compiles and runs the simulation tests. The Windows service cr
 
 Outputs stay on your machine:
 
+The builder copies the repository into its image at `/source`; it does not rely on a host source bind mount. Run these commands from the repository root and keep `--build` so source changes are included. Only build outputs are bind-mounted to `dist/`.
+
 ```text
 dist/linux/escalation
 dist/linux/escalation_headless
