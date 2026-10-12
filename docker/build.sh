@@ -2,7 +2,7 @@
 set -eu
 platform="${1:-linux}"
 if [ ! -f /source/CMakeLists.txt ]; then
- printf 'Project source is missing from the builder image. Run docker compose run --build --rm %s from the repository root.\n' "$platform" >&2
+ printf 'Project source is missing from the builder image. Run docker compose up --build --exit-code-from %s %s from the repository root.\n' "$platform" "$platform" >&2
  exit 1
 fi
 case "$platform" in
@@ -18,4 +18,5 @@ case "$platform" in
  *) printf 'Unknown platform: %s\n' "$platform" >&2; exit 2 ;;
 esac
 cmake --install /build --prefix "/out/$platform"
-printf 'Local build ready in dist/%s\n' "$platform"
+printf 'Build installed in Docker volume at /out/%s. Export it with:\n' "$platform"
+printf '  docker compose cp %s:/out/%s/. ./dist-%s\n' "$platform" "$platform" "$platform"

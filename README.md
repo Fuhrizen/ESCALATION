@@ -24,28 +24,31 @@ This first iteration focuses on **nation selection, research, industry and logis
 Install Docker with Compose v2. On Windows, use Docker Desktop's **Linux containers**. The first build needs internet access for the builder images and the pinned GLFW / Dear ImGui source dependencies.
 
 ```sh
-docker compose run --build --rm linux
-docker compose run --build --rm windows
+docker compose up --build --exit-code-from linux linux
+docker compose cp linux:/out/linux/. ./dist-linux
+
+docker compose up --build --exit-code-from windows windows
+docker compose cp windows:/out/windows/. ./dist-windows
 ```
 
 The Linux service compiles and runs the simulation tests. The Windows service cross-compiles x86-64 Windows executables with MinGW; it does not run Windows executables in the Linux builder.
 
 Outputs stay on your machine:
 
-The builder copies the repository into its image at `/source`; it does not rely on a host source bind mount. Run these commands from the repository root and keep `--build` so source changes are included. Only build outputs are bind-mounted to `dist/`.
+The builder copies the repository into its image at `/source`; it does not rely on a host source bind mount. Run these commands from the repository root and keep `--build` so source changes are included. Build output stays in a named Docker volume. `docker compose cp` exports it through the Docker client, avoiding host bind-mount write permissions. Keep the stopped service container until you have copied its output; do not use `run --rm` for this workflow.
 
 ```text
-dist/linux/escalation
-dist/linux/escalation_headless
-dist/linux/data/
-dist/windows/escalation.exe
-dist/windows/escalation_headless.exe
-dist/windows/data/
+dist-linux/escalation
+dist-linux/escalation_headless
+dist-linux/data/
+dist-windows/escalation.exe
+dist-windows/escalation_headless.exe
+dist-windows/data/
 ```
 
 Launch the executable on the corresponding host OS. Keep its `data/` directory beside it. Docker builds the game; it does not launch the desktop UI. Linux binaries target Ubuntu 24.04 or compatible systems, rather than a universal Linux ABI. The Windows client requires a working OpenGL 3.3 GPU driver. No GitHub Actions or release upload workflow is included.
 
-Build caches use named Docker volumes. To adjust build parallelism, set `JOBS` (default 4). To discard build caches, use `docker compose down --volumes`; local `dist/` outputs remain.
+Build caches use named Docker volumes. To adjust build parallelism, set `JOBS` (default 4). To discard build caches, use `docker compose down --volumes`; copied `dist-linux/` and `dist-windows/` outputs remain.
 
 ## Native development
 

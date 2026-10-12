@@ -1,5 +1,7 @@
 /build*/
 /dist/
+/dist-linux/
+/dist-windows/
 /.local_deps/
 /.test_tmp/
 /smoke/

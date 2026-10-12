@@ -3,6 +3,8 @@
 .test_tmp
 build*
 dist
+dist-linux
+dist-windows
 core_tests
 escalation_client
 escalation_headless
