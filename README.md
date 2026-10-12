@@ -4,6 +4,10 @@ A native C++17 / OpenGL 3.3 strategy prototype about building a nation before co
 
 This first iteration focuses on **nation selection, research, industry and logistics**. It renders the complete Natural Earth world in flat-map and globe projections, but simulates only your nation and one neighbouring rival. There is no enemy decision-making AI: a deterministic planner places starting facilities; the war model uses static regional defence.
 
+![Native map and national command](docs/map.png)
+
+[More native screenshots](docs/SCREENSHOTS.md)
+
 ## Playable now
 
 - Main menu, searchable country selection, map picking, nation preview, reference statistics and specialization selection.
@@ -61,7 +65,7 @@ ctest --test-dir build-core --output-on-failure
 ./build-core/escalation_headless FRA 49275
 ```
 
-A compiler-only validation path is also provided:
+A compiler-only validation path is also provided (see the validation record for the optional sanitizer path):
 
 ```sh
 python3 tools/verify.py

@@ -1,0 +1,9 @@
+.git
+.local_deps
+.test_tmp
+build*
+dist
+core_tests
+escalation_client
+escalation_headless
+smoke

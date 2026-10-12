@@ -1,0 +1,10 @@
+{
+  "source": "https://github.com/nvkelso/natural-earth-vector/blob/v5.1.2/geojson/ne_110m_admin_0_countries.geojson",
+  "version": "5.1.2",
+  "scale": "1:110m",
+  "license": "Public domain",
+  "source_sha256": "6866c877d39cba9c357620878839b336d569f8c662d3cfab4cb1dbe2d39c977f",
+  "output_sha256": "9d15f8943e8fb49c6330d152961cc4d895bc30a0f19cc2c522eea5765ae43ded",
+  "features": 177,
+  "geometry_modified": false
+}

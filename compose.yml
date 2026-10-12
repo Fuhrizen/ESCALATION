@@ -1,0 +1,30 @@
+services:
+  linux:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: linux-builder
+    environment:
+      JOBS: ${JOBS:-4}
+    volumes:
+      - .:/source:ro
+      - ./dist:/out
+      - linux-build:/build
+      - dependency-cache:/deps
+  windows:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: windows-builder
+    environment:
+      JOBS: ${JOBS:-4}
+    volumes:
+      - .:/source:ro
+      - ./dist:/out
+      - windows-build:/build
+      - dependency-cache:/deps
+volumes:
+  linux-build:
+  windows-build:
+  dependency-cache:
