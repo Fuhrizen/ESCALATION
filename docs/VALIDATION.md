@@ -1,62 +1,50 @@
 # Validation record
 
-Validated on 12–13 October 2026 in a Linux x86-64 workspace with GCC 13 and Mesa software OpenGL. This records the prototype's actual checks, rather than claiming desktop release qualification.
-
-## Results
+Validated on 14 October 2026 in a Linux x86-64 workspace with GCC 13, local CMake 4.4.4, GLFW 3.4, Dear ImGui 1.91.8 and Mesa software OpenGL. This records prototype checks, not desktop release qualification.
 
 | Check | Result |
 | --- | --- |
-| Native C++17 core compilation | Passed |
-| Core simulation / map checks | 1,078 passed |
-| Camera projection / picking roundtrips | 2,521 passed |
-| ASan + UBSan valid-flow checks | 1,074 core checks and 2,521 projection checks passed |
-| Actual OpenGL shader/UI smoke run | Ten frames captured across menu, map selection preview, globe, flat map, connected research tree, construction, regional upgrades, war/forces, close-up units and economy; no GL errors |
+| CMake C++17 core build / CTest | Three suites passed |
+| Core/world/production/research/save checks | 14,720 passed |
+| Projection and camera motion | 6,198 passed |
+| Tactical combat/navigation checks | 120 passed |
+| ASan + UBSan valid-flow suites | 14,690 core, 6,198 camera and 120 tactical checks passed; 49,275-day headless run passed |
+| All playable nation starts | 170 canonical campaigns; every objective lies on the correct in-country region |
+| Native client build | Passed with GLFW null platform |
+| Actual OpenGL smoke | Ten captured states; no GL errors |
 | Render context | Mesa 25.2.8, OpenGL 4.5 core; shaders target OpenGL 3.3 |
-| Cached world geometry | 361,440 land vertices; 177 map features |
-| Campaign benchmark | 49,275 daily ticks (1920–2055), about 246,000 ticks/sec (currency economy; single run) in the optimized two-nation core |
-| Replacement Podman host orchestration | Seven tests passed; package validation includes flags, terrain and grouping metadata; shell syntax checked |
-| Docker Linux compilation / CTest | Passed on the user’s host (both tests); output installation subsequently hit host bind-mount permissions |
-| Docker Windows cross-build / Windows runtime | Not run: Docker and MinGW are not installed in this environment |
-| CMake configure/build | Not run here: CMake is not installed; equivalent source/dependency targets were compiled directly with GCC |
+| Build orchestration tests | Seven passed; package requires roads, settlements and geography manifest |
+| Data regeneration | Geography derivatives reproduced byte-for-byte; source/output/world hashes verified |
+| Road index | 5,498 sampled road midpoint queries preserve their originating road; dateline coverage checked |
+| Campaign benchmark | 49,275 days; approximately 271,000 ticks/sec, one optimized two-nation run without active war |
 
-The normal suite checks country centres on land, picking, shared land borders, clipped partition area conservation, research prerequisites/queues, construction without routes, recipe starvation, deterministic save restoration, malformed-save rejection, supplied conventional capture, amphibious landing gates and scripted MAD.
+Core checks cover real country picking/land partitions, flags, imported cities and grouping, all-region objective placement, regional allocation, finite production sharing and spare-work redistribution, cancellation, source/lab loss, prerequisites, year-free rush and frozen cost, save continuation, malformed snapshots, version-2 queue migration, geometric aircraft orders and strategic production/release consequences.
 
-The optional `tools/verify.py --sanitize` path disables leak enumeration and excludes deliberate exception/unwinding tests because this restricted workspace cannot expose the process/stack metadata ASan requires. The ordinary suite includes malformed-save tests. Address/undefined checks cover successful simulation, persistence roundtrips, geometry and projection flows. This is not a complete leak or malformed-input sanitizer audit.
+Tactical checks cover nonteleporting movement, exactly 15% road speed, separate support research speed, peace/unfinished/invalid order rejection, automatic simultaneous local damage, contested-town capture, partial regional occupation, all-town control, captured-base cancellation, type-specific weapons, defensive AI motion, pressure signs, ocean embark gates, naval land rejection, neutral-land detours and ended-campaign/history limits.
+
+Camera checks cover flat/globe picking at 1× through 512×, pan convergence, frame-rate independence, pointer anchor preservation at datelines and positive/negative latitudes, zoom convergence, bounds and focus reset. Physical input behavior is reviewed in code; it still needs desktop playtesting.
+
+Geography review checks pinned v5.1.2 source hashes, modern source-country aliases, deterministic reductions, repeated loading, malformed input rejection and the spatial index. Imported coordinates near simplified coastlines are adjusted in-country for playable objectives. Roads are strategic vectors, not a street-level routing database.
 
 ## Reproduce
 
 ```sh
-python3 tools/verify.py
-python3 tools/verify.py --sanitize
+cmake -S . -B build-core -DESCALATION_BUILD_CLIENT=OFF -DCMAKE_BUILD_TYPE=Release
+cmake --build build-core --parallel
+ctest --test-dir build-core --output-on-failure
+python3 tests/test_build_pipeline.py
 ```
 
-With a normal development toolchain:
+Native surfaceless smoke:
 
 ```sh
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build --parallel
-ctest --test-dir build --output-on-failure
-./build/escalation --smoke build/smoke
+cmake -S . -B build-native -DESCALATION_NULL_PLATFORM=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build build-native --parallel
+EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 ./build-native/escalation --smoke build-native/smoke
 ```
 
-The smoke path uses GLFW's null platform for metadata/input and a genuine EGL pbuffer OpenGL context. It requires Linux EGL and does not depend on a browser, mocked renderer or generated concept art. Screenshots in this repository were captured from this application.
+This creates a genuine EGL pbuffer OpenGL context; screenshots are from the application. No mocked renderer, browser or generated concept imagery is used.
 
-The benchmark excludes map loading, sector generation and rendering. It does not establish full-world simultaneous simulation performance, GPU frame rates, tactical-unit throughput or the intended 2–4 hour match balance. Desktop interaction, multiple GPUs, Windows runtime and the replacement Podman image builds still need host validation.
+The compiler-only path remains `python3 tools/verify.py`; optional `--sanitize` uses ASan/UBSan and excludes deliberate exception/unwinding fixtures in this restricted workspace. Leak enumeration is disabled because process/stack metadata is unavailable. These limitations do not affect the ordinary malformed-save suite.
 
-## Replacement Podman build pipeline
-
-The Compose/runtime-volume workflow was removed after host failures. The new `Containerfile` compiles and installs into image-local `/artifacts` during `podman build`. The host script uses direct `podman create`, `podman cp` and `podman rm` to extract a validated package. No host bind mounts or persistent CMake-cache volumes are used.
-
-Seven orchestration tests cover Linux/Windows targets, combined builds, paths with spaces, build/copy failures, cleanup, incomplete packages, preservation of prior packages and clean-build flags. These use a stand-in container CLI and do not pretend to execute Podman. The relocated headless executable was also compiled and exercised with its original data path deliberately missing.
-
-The Linux image construction now requires core tests, projection tests, genuine software-OpenGL smoke rendering and installed-package data lookup to pass before producing its artifact stage. Those stages still need execution on the user's Podman host; this workspace cannot run Podman, Docker or CMake. The previously reported host CMake compilation/CTest pass remains valid for the game source.
-
-Official command references: https://docs.podman.io/en/latest/markdown/podman-build.1.html and https://docs.podman.io/en/latest/markdown/podman-cp.1.html .
-
-## Map-first / gameplay revision
-
-New checks cover default currency construction with no hidden stocks, ocean/rival placement rejection without charging money, declared income after completion, road upgrades and income multipliers, one-time cancellation refunds, advanced-unit research gates, unfinished-unit movement rejection, ground-route movement, air-over-water orders, unit production/cancellation, research-driven unlocks, deterministic unit/currency save continuation, visible-force offensive capture, merged-territory picking and all 177 flag mappings. Projection tests now include 1×, 8×, 64× and 512× zoom in both projections.
-
-The flag and terrain asset bake was reproduced from bundled SVGs and the pinned relief source. The native client loaded both resulting PNGs and rendered without GL errors. The screenshots include 64× close zoom; projection roundtrips cover the 512× limit. Assets are bundled for offline play.
-
-Mouse/keyboard usability still needs desktop playtesting. The smoke path selects states programmatically; it validates native rendering and asset loading, not a complete physical-input test. No Windows runtime, rootless Podman image build, full-world benchmark, continuous frontline solver, terrain-aware navigation or measured match-duration claim is made.
+The benchmark excludes loading, region generation, rendering and active tactical war. It does not establish full-world simultaneous simulation, target GPU frame rates or intended match duration. No Windows runtime, rootless Podman image execution or multi-GPU qualification was performed here. The bounded visibility-graph planner may reject complex feasible detours; generalized geometry and 0.08-degree route samples cannot resolve street-scale obstacles. Exact ICBM feature/balance parity is not established.

@@ -4,7 +4,7 @@
 
 `escalation_core` is independent of a window system and OpenGL. `World` imports map data, triangulates polygons with holes and computes shared-edge land neighbours. `Simulation` owns campaign state, production, research, routes, combat and persistence. `Renderer` owns GPU resources. The desktop client owns Dear ImGui panels, input, camera state and the real-time accumulator.
 
-The headless executable links only the core. Core tests can run without desktop packages, network downloads or a GPU. GLFW and Dear ImGui are fetched at release tags; picojson, earcut and stb_image are vendored with notices and licences. SurfaceAssets loads two bundled textures: the relief raster and flag atlas.
+The headless executable links only the core. Core tests can run without desktop packages, network downloads or a GPU. Camera and tactical tests also link the dependency-free core. GLFW and Dear ImGui are fetched at release tags; picojson, earcut and stb_image are vendored with notices and licences. SurfaceAssets loads two bundled textures: the relief raster and flag atlas.
 
 ## Geometry
 
@@ -22,9 +22,11 @@ Relative elevation is sampled by geographic coordinates in the fragment shader f
 
 Daily ticks are deterministic. The client accumulates real time at 0.25 seconds per day, clamps an individual frame's contribution and limits catch-up to avoid an unbounded frame stall. Rendering remains independent of time speed. Pausing halts simulation.
 
-Campaign data uses vectors for regions, facilities, units and routes, fixed arrays for stocks/levels, and a small research deque. The default economy accumulates currency income/upkeep per operational site, advances construction/production and uses roads for regional upgrades. Legacy production recipes run in an explicit stable order. Connected capacity uses a widest-path search over enabled player-owned routes. This small POC computes paths on demand; full-world simulation should cache a graph snapshot and invalidate it on topology/ownership changes rather than repeat path searches for every site.
+Campaign data uses vectors for regions, settlements, facilities, units and paths, fixed arrays for compatibility stocks/levels, and a research deque. Active national output is allocated once per daily tick between research conversion and shared production work. Region ownership is derived from settlement control after local combat. The enemy uses the same terrain-sampled visibility-graph movement planner as player orders.
 
-Version-2 saves contain nation codes, date, economy mode, technology flags, research progress, regional ownership/roads, placed-site coordinates/cancellation, unit production/health/positions/waypoints/orders and legacy route state. Loading builds a candidate campaign and validates it before replacing the active campaign. Geometry is regenerated from bundled world data and deterministic nation indexes; changed map versions require a save migration. Writes use a temporary file and retain a previous `.bak` snapshot during replacement.
+Geography imports are cached in World. Roads have a 5-degree spatial index covering each segment's bounding cells, including dateline crossings; nearby queries return deduplicated candidates. Rendering uses zoom-dependent road and city overlays, and signed local unit pressure for frontline paint. Higher-resolution geometry still needs additional LOD and broader spatial caches.
+
+Version-3 saves add settlement identity/position/population/ownership/capture, frozen research job cost and strategic production work. Unit orders include geometric waypoints. Earlier saves migrate inactive economic facilities and production work. Loading builds a candidate campaign and validates fields before replacing the running state. Geometry derives from bundled world data; writes use temporary files and retain the previous backup during replacement.
 
 ## Drawing budget
 

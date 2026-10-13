@@ -158,6 +158,82 @@ namespace escalation {
     }
     auto grouping=std::filesystem::path(file).parent_path()/"nation-groups.json";
     if(std::filesystem::exists(grouping))applyGroups(grouping.string());
+    cities.clear();
+    roads.clear();
+    auto settlements=std::filesystem::path(file).parent_path()/"settlements.json";
+    if(std::filesystem::exists(settlements)){
+      auto data=readJson(settlements.string());
+      for(auto& row:asArray(field(data,"cities"))){
+        WorldCity city;
+        city.name=string(row,"name");
+        city.position={number(row,"lon"),number(row,"lat")};
+        city.population=number(row,"population");
+        city.countryCode=string(row,"country");
+        if(city.name.empty()||find(city.countryCode)<0||!std::isfinite(city.position.x)||!std::isfinite(city.position.y)||std::abs(city.position.x)>180||std::abs(city.position.y)>90||!std::isfinite(city.population)||city.population<0)
+          throw std::runtime_error("Invalid settlement in "+settlements.string());
+        cities.push_back(std::move(city));
+      }
+    }
+    auto roadFile=std::filesystem::path(file).parent_path()/"roads.json";
+    if(std::filesystem::exists(roadFile)){
+      auto data=readJson(roadFile.string());
+      for(auto& row:asArray(field(data,"roads"))){
+        WorldRoad road;
+        for(auto& coord:asArray(row)){
+          auto& pair=asArray(coord);
+          if(pair.size()!=2)throw std::runtime_error("Invalid road coordinate");
+          Point point{asNumber(pair[0]),asNumber(pair[1])};
+          if(!std::isfinite(point.x)||!std::isfinite(point.y)||std::abs(point.x)>180||std::abs(point.y)>90)throw std::runtime_error("Invalid road coordinate");
+          road.points.push_back(point);
+        }
+        if(road.points.size()<2)throw std::runtime_error("Road needs two or more points");
+        roads.push_back(std::move(road));
+      }
+    }
+    rebuildRoadIndex();
+  }
+  void World::rebuildRoadIndex(){
+    for(auto& cell:roadIndex_)cell.clear();
+    for(size_t id=0;id<roads.size();++id)for(size_t n=1;n<roads[id].points.size();++n){
+      Point a=roads[id].points[n-1],b=roads[id].points[n];
+      a.x=std::remainder(a.x,360.0);
+      b.x=a.x+std::remainder(b.x-a.x,360.0);
+      int west=int(std::floor((std::min(a.x,b.x)+180)/5));
+      int east=int(std::floor((std::max(a.x,b.x)+180)/5));
+      int south=std::clamp(int(std::floor((std::min(a.y,b.y)+90)/5)),0,35);
+      int north=std::clamp(int(std::floor((std::max(a.y,b.y)+90)/5)),0,35);
+      for(int row=south;row<=north;++row)for(int column=west;column<=east;++column)
+        roadIndex_[row*72+((column%72+72)%72)].push_back(int(id));
+    }
+    for(auto& cell:roadIndex_){
+      std::sort(cell.begin(),cell.end());
+      cell.erase(std::unique(cell.begin(),cell.end()),cell.end());
+    }
+    indexedRoadCount_=roads.size();
+  }
+  std::vector<int> World::nearbyRoads(Point center,double radius) const{
+    std::vector<int> candidates;
+    if(!std::isfinite(center.x)||!std::isfinite(center.y)||!std::isfinite(radius)||radius<0)return candidates;
+    // Tests and editor tools may replace the public road list. A changed count
+    // falls back safely until their next explicit rebuildRoadIndex().
+    if(indexedRoadCount_!=roads.size()||radius>=180){
+      for(size_t id=0;id<roads.size();++id)candidates.push_back(int(id));
+      return candidates;
+    }
+    center.x=std::remainder(center.x,360.0);
+    center.y=std::clamp(center.y,-90.0,90.0);
+    double longitude=std::min(180.0,radius/std::max(0.2,std::cos(center.y*0.01745329252)));
+    int west=int(std::floor((center.x-longitude+180)/5));
+    int east=int(std::floor((center.x+longitude+180)/5));
+    int south=std::clamp(int(std::floor((center.y-radius+90)/5)),0,35);
+    int north=std::clamp(int(std::floor((center.y+radius+90)/5)),0,35);
+    for(int row=south;row<=north;++row)for(int column=west;column<=east;++column){
+      const auto& cell=roadIndex_[row*72+((column%72+72)%72)];
+      candidates.insert(candidates.end(),cell.begin(),cell.end());
+    }
+    std::sort(candidates.begin(),candidates.end());
+    candidates.erase(std::unique(candidates.begin(),candidates.end()),candidates.end());
+    return candidates;
   }
   int World::opponent(int nation) const{
     nation=canonical(nation);

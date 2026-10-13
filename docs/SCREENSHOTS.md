@@ -1,6 +1,6 @@
 # Native application screenshots
 
-Captured from the running version-0.2 OpenGL application using Linux EGL smoke mode. These are functional UI screens, not mockups.
+Captured from the running version-0.3 OpenGL application using Linux EGL smoke mode. These are functional UI screens, not mockups.
 
 ## Main menu
 
@@ -26,9 +26,9 @@ Captured from the running version-0.2 OpenGL application using Linux EGL smoke m
 
 ![Map construction catalogue](industry.png)
 
-## Contextual regional upgrades
+## Regional settlement control
 
-![Contextual regional upgrades](region.png)
+![Regional settlement control](region.png)
 
 ## Forces and strategic weapons
 
@@ -38,6 +38,6 @@ Captured from the running version-0.2 OpenGL application using Linux EGL smoke m
 
 ![Close-up unit command at 64× zoom](units.png)
 
-## Currency income and upkeep
+## Imported roads, cities and dynamic frontline
 
-![Currency income and upkeep](economy.png)
+![Imported roads, cities and dynamic frontline](frontline.png)

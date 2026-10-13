@@ -89,11 +89,13 @@ struct App {
   Simulation sim;
   Renderer renderer;
   Camera camera;
+  CameraMotion cameraMotion;
+  std::vector<Point> previousUnitPositions;
   enum Screen{
     Menu,Select,Game
   };
   enum Panel{
-    None,Economy,Build,Research,Forces,Infrastructure,Log
+    None,Build,Research,Forces,Log
   };
   Screen screen=Menu;
   Panel panel=None;
@@ -101,6 +103,8 @@ struct App {
   bool paused=true,regionOpen=false,unitOpen=false,nationOpen=false,commandMode=false,showRanges=true,autoResearch=false,leftStarted=false,rightDragged=false,treeFocus=false;
   double accumulator=0;
   Point pointer,leftStart,popup;
+  int panButton=-1;
+  bool rightStarted=false;
   std::vector<int> selectedUnits;
   std::string message;
   std::filesystem::path saves;
@@ -108,6 +112,12 @@ struct App {
   }
   void notice(const std::string& text){
     message=text;
+  }
+  void clearSelection(){
+    selectedRegion=selectedSite=selectedUnit=construction=-1;
+    selectedUnits.clear();
+    regionOpen=unitOpen=nationOpen=commandMode=leftStarted=rightStarted=rightDragged=false;
+    panButton=-1;
   }
   void flag(int nation,ImVec2 size={
     28,21
@@ -131,13 +141,14 @@ struct App {
       auto a=saves/"campaign.json",b=saves/"autosave.json";
       if(!std::filesystem::exists(a)||(std::filesystem::exists(b)&&std::filesystem::last_write_time(b)>std::filesystem::last_write_time(a)))a=b;
       sim.load(a.string());
-      sim.state.simpleEconomy=true;
+      previousUnitPositions.clear();
+      accumulator=0;
       renderer.campaign(world,sim.state);
       selectedNation=sim.state.player;
       screen=Game;
       panel=None;
       paused=true;
-      selectedRegion=-1;
+      clearSelection();
       centerNation(selectedNation);
       notice("Campaign restored; paused");
     }
@@ -146,6 +157,7 @@ struct App {
     }
   }
   void center(Point point){
+    cameraMotion.reset();
     camera.longitude=std::remainder(point.x,360.0);
     camera.latitude=std::clamp(point.y,-89.0,89.0);
   }
@@ -169,14 +181,10 @@ struct App {
     renderer.campaign(world,sim.state);
     screen=Game;
     panel=None;
-    selectedRegion=-1;
-    selectedSite=-1;
-    selectedUnit=-1;
-    selectedUnits.clear();
-    nationOpen=false;
-    regionOpen=unitOpen=false;
+    clearSelection();
     paused=true;
     accumulator=0;
+    previousUnitPositions.clear();
     centerNation(selectedNation);
     notice("Select units or land. Construction [B], research [R], Space resumes.");
   }
@@ -201,7 +209,7 @@ struct App {
         notice(std::string("Constructing ")+facilityNames[construction]);
         if(!ImGui::GetIO().KeyShift)construction=-1;
       }
-      else notice("Cannot build here: choose controlled land, an unlocked building and sufficient funds; shipyards need a coast.");
+      else notice("Cannot build here: choose controlled land, an unlocked building and available production capacity; shipyards need a coast.");
       return;
     }
     if(commandMode&&!selectedUnits.empty()){
@@ -217,7 +225,7 @@ struct App {
       auto& u=sim.state.units[i];
       if(u.health<=0)continue;
       bool visible;
-      auto p=camera.project(u.position,&visible);
+      auto p=camera.project(displayedUnit(size_t(&u-sim.state.units.data())),&visible);
       double d=std::hypot(p.x-pointer.x,p.y-pointer.y);
       if(visible&&d<nearest){
         nearest=d;
@@ -252,15 +260,22 @@ struct App {
     regionOpen=selectedRegion>=0;
     popup=pointer;
   }
-  void controls(){
+  Point displayedUnit(size_t id) const {
+    const auto& position=sim.state.units[id].position;
+    if(paused||id>=previousUnitPositions.size())return position;
+    auto old=previousUnitPositions[id];
+    double t=std::clamp(accumulator/0.25,0.0,1.0);
+    return {std::remainder(old.x+std::remainder(position.x-old.x,360.0)*t,360.0),old.y+(position.y-old.y)*t};
+  }
+  void controls(double dt){
     auto& io=ImGui::GetIO();
     pointer={
       io.MousePos.x,io.MousePos.y
     };
-    if(!io.WantTextInput){
-      if(ImGui::IsKeyPressed(ImGuiKey_G))camera.globe=!camera.globe;
+    if(!io.WantTextInput&&!io.WantCaptureKeyboard){
+      if(ImGui::IsKeyPressed(ImGuiKey_G)){cameraMotion.reset();camera.globe=!camera.globe;}
       if(ImGui::IsKeyPressed(ImGuiKey_H))centerNation(selectedNation);
-      if(ImGui::IsKeyPressed(ImGuiKey_F)&&selectedUnit>=0){
+      if(screen==Game&&ImGui::IsKeyPressed(ImGuiKey_F)&&selectedUnit>=0&&selectedUnit<int(sim.state.units.size())){
         center(sim.state.units[selectedUnit].position);
         camera.zoom=std::max(camera.zoom,40.0);
       }
@@ -290,26 +305,24 @@ struct App {
       }
     }
     bool over=pointer.x>=camera.x&&pointer.x<camera.x+camera.width&&pointer.y>=camera.y&&pointer.y<camera.y+camera.height;
+    if(!io.WantTextInput&&!io.WantCaptureKeyboard){
+      double horizontal=(ImGui::IsKeyDown(ImGuiKey_D)||ImGui::IsKeyDown(ImGuiKey_RightArrow))-(ImGui::IsKeyDown(ImGuiKey_A)||ImGui::IsKeyDown(ImGuiKey_LeftArrow));
+      double vertical=(ImGui::IsKeyDown(ImGuiKey_W)||ImGui::IsKeyDown(ImGuiKey_UpArrow))-(ImGui::IsKeyDown(ImGuiKey_S)||ImGui::IsKeyDown(ImGuiKey_DownArrow));
+      double length=std::hypot(horizontal,vertical);
+      double distance=(camera.globe?114.6:360.0)*0.65*std::min(dt,0.1)/camera.zoom;
+      if(length>0)cameraMotion.pan({horizontal/length*distance,vertical/length*distance});
+    }
+    else cameraMotion.pending={};
     if(over&&!io.WantCaptureMouse){
-      if(io.MouseWheel!=0){
-        auto before=camera.unproject(pointer);
-        camera.zoom=std::clamp(camera.zoom*std::exp(io.MouseWheel*0.16),camera.globe?0.55:0.8,512.0);
-        auto after=camera.unproject(pointer);
-        if(before&&after){
-          center({
-            camera.longitude+std::remainder(before->x-after->x,360.0),camera.latitude+before->y-after->y
-          });
-        }
+      if(io.MouseWheel!=0)cameraMotion.wheel(camera,pointer,io.MouseWheel);
+      if(ImGui::IsMouseClicked(ImGuiMouseButton_Right)){rightDragged=false;rightStarted=true;panButton=ImGuiMouseButton_Right;}
+      if(ImGui::IsMouseClicked(ImGuiMouseButton_Middle))panButton=ImGuiMouseButton_Middle;
+      if(panButton>=0&&ImGui::IsMouseDragging(panButton,panButton==ImGuiMouseButton_Right?5:0)){
+        if(panButton==ImGuiMouseButton_Right)rightDragged=true;
+        double scale=camera.globe?114.6/camera.height:360.0/camera.width;
+        cameraMotion.pan({-io.MouseDelta.x*scale/camera.zoom,io.MouseDelta.y*scale/camera.zoom});
       }
-      if(ImGui::IsMouseClicked(ImGuiMouseButton_Right))rightDragged=false;
-      if(ImGui::IsMouseDragging(ImGuiMouseButton_Right,5)){
-        rightDragged=true;
-        double scale=camera.globe?114.6:360.0;
-        center({
-          camera.longitude-io.MouseDelta.x*scale/camera.width/camera.zoom,camera.latitude+io.MouseDelta.y*scale/camera.width/camera.zoom
-        });
-      }
-      if(ImGui::IsMouseReleased(ImGuiMouseButton_Right)&&!rightDragged){
+      if(rightStarted&&ImGui::IsMouseReleased(ImGuiMouseButton_Right)&&!rightDragged){
         if(construction>=0){
           construction=-1;
           notice("Construction placement cancelled");
@@ -331,13 +344,13 @@ struct App {
     if(leftStarted&&ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
       leftStarted=false;
       double drag=std::hypot(pointer.x-leftStart.x,pointer.y-leftStart.y);
-      if(drag>8&&screen==Game&&construction<0){
+      if(drag>8&&screen==Game&&construction<0&&over&&!io.WantCaptureMouse){
         selectedUnits.clear();
         for(size_t i=0;i<sim.state.units.size();++i){
           auto& u=sim.state.units[i];
           if(u.owner!=sim.state.player||u.health<=0||u.remaining>0)continue;
           bool visible;
-          auto p=camera.project(u.position,&visible);
+          auto p=camera.project(displayedUnit(size_t(&u-sim.state.units.data())),&visible);
           if(visible&&p.x>=std::min(leftStart.x,pointer.x)&&p.x<=std::max(leftStart.x,pointer.x)&&p.y>=std::min(leftStart.y,pointer.y)&&p.y<=std::max(leftStart.y,pointer.y))selectedUnits.push_back(int(i));
         }
         if(!selectedUnits.empty()){
@@ -353,6 +366,9 @@ struct App {
         if(geo)selectPoint(*geo);
       }
     }
+    if(ImGui::IsMouseReleased(ImGuiMouseButton_Right))rightStarted=false;
+    if(panButton>=0&&!ImGui::IsMouseDown(panButton))panButton=-1;
+    cameraMotion.advance(camera,dt);
   }
   void hud(float w,float h){
     fixedWindow("Main HUD",0,0,w,52);
@@ -363,7 +379,7 @@ struct App {
         24,18
       });
       ImGui::SameLine();
-      ImGui::Text("$%.0f (%+.0f/day)  | RP %.1f | %d",sim.state.money,sim.state.income-sim.state.upkeep,sim.state.researchRate,sim.year());
+      ImGui::Text("Production %.1f/day | Research %.1f RP/day | %d",sim.state.productionRate,sim.state.researchRate,sim.year());
       ImGui::SameLine();
       if(button(paused?"Resume [Space]":"Pause [Space]"))paused=!paused;
       ImGui::SameLine();
@@ -378,7 +394,7 @@ struct App {
     }
     else ImGui::TextColored(accent,"SELECT A NATION ON THE MAP");
     ImGui::SameLine();
-    if(button(camera.globe?"Globe [G]":"Map [G]"))camera.globe=!camera.globe;
+    if(button(camera.globe?"Globe [G]":"Map [G]")){cameraMotion.reset();camera.globe=!camera.globe;}
     ImGui::SameLine();
     if(button("Fit [H]",selectedNation>=0))centerNation(selectedNation);
     ImGui::SameLine();
@@ -392,10 +408,6 @@ struct App {
       ImGui::SameLine();
       if(button("Forces [U]"))toggle(Forces);
       ImGui::SameLine();
-      if(button("Economy"))toggle(Economy);
-      ImGui::SameLine();
-      if(button("Roads"))toggle(Infrastructure);
-      ImGui::SameLine();
       if(button("Log"))toggle(Log);
       ImGui::SameLine();
     }
@@ -407,7 +419,7 @@ struct App {
       }
       ImGui::SameLine();
     }
-    std::string status=construction>=0?std::string("Place ")+facilityNames[construction]+" on land | Shift repeats | Right click cancels":commandMode?"Click a destination for your selected formation":message.empty()?"Left click selects | Drag selects units | Right click orders / drag pans | Wheel zooms":message;
+    std::string status=construction>=0?std::string("Place ")+facilityNames[construction]+" on land | Shift repeats | Right click cancels":commandMode?"Click a destination for your selected formation":message.empty()?"WASD / arrows pan | Middle drag pans | Right click orders | Wheel zooms":message;
     ImGui::TextColored(muted,"%s",status.substr(0,100).c_str());
     tooltip(status);
     ImGui::End();
@@ -421,7 +433,7 @@ struct App {
     ImGui::SetWindowFontScale(1.7f);
     ImGui::TextColored(accent,"ESCALATION");
     ImGui::SetWindowFontScale(1);
-    wrapped("Command on the map. Build an economy. Research a doctrine. Move visible forces into battle.");
+    wrapped("Build military facilities. Allocate research. Move formations to capture cities and secure regions.");
     if(ImGui::Button("Start game",{
       -1,42
     })){
@@ -435,7 +447,7 @@ struct App {
     if(button("Continue saved campaign",std::filesystem::exists(saves/"campaign.json")||std::filesystem::exists(saves/"autosave.json")))resume();
     if(button("Quit"))std::exit(0);
     heading("PROTOTYPE 0.2");
-    wrapped("Modern-border alternate history. Direct construction, currency economy and nine unit families. One static rival.");
+    wrapped("Global command simulation. Technology branches, military production, city capture and responsive defensive forces.");
     ImGui::End();
   }
   void positionPopup(const char* name,bool& open,float height){
@@ -468,11 +480,22 @@ struct App {
     if(button("Zoom to country"))centerNation(selectedNation);
     ImGui::End();
   }
+  void allocation(){
+    auto& s=sim.state;
+    float budget=float(s.researchBudget*100);
+    wrapped("Research allocation");
+    ImGui::SetNextItemWidth(-1);
+    if(ImGui::SliderFloat("##researchAllocation",&budget,0,100,"%.0f%%")){s.researchBudget=budget/100;sim.refreshRates();}
+    ImGui::TextColored(muted,"Research: %.1f RP/day",s.researchRate);
+    ImGui::TextColored(muted,"Production: %.1f work/day",s.productionRate);
+    tooltip("National output is shared between research and production. Construction, units and warheads share production capacity.");
+  }
   void buildPanel(){
     heading("CONSTRUCTION");
-    wrapped("Choose a building, then click controlled land. Every cost is paid from your treasury.");
+    allocation();
+    wrapped("Choose a military facility, then place it on controlled land. Facilities support production, research and strategic delivery.");
     const int types[]={
-      13,14,15,6,10,11,4,8,9,12,5,7
+      10,11,8,9,12,6,4,7
     };
     for(int id:types){
       ImGui::PushID(id);
@@ -484,22 +507,35 @@ struct App {
         regionOpen=unitOpen=false;
         notice("Click controlled land to place construction");
       }
-      ImGui::TextColored(muted,"$%.0f | +$%.0f/day | %d days",sim.buildCost(Facility(id)),sim.buildingIncome(Facility(id)),id==9?120:35);
+      ImGui::TextColored(muted,"%.0f production work",sim.buildCost(Facility(id)));
       if(id==6)ImGui::TextColored(accent,"Produces research points");
-      if(id==8)ImGui::TextColored(muted,"Requires a coastal location and naval research");
+      if(id==8)wrapped("Requires a coastal location and naval research");
+      ImGui::PopID();
+    }
+    heading("CONSTRUCTION QUEUE");
+    for(size_t i=0;i<sim.state.sites.size();++i){
+      auto& site=sim.state.sites[i];
+      if(site.destroyed||site.remaining<=0||sim.state.regions[site.region].owner!=sim.state.player)continue;
+      ImGui::PushID(int(i)+100);
+      ImGui::Text("%s | %.0f work left",facilityNames[int(site.type)],site.remaining);
+      ImGui::ProgressBar(float(std::clamp(1-site.remaining/sim.buildCost(site.type),0.0,1.0)));
+      if(button("Inspect")){selectedSite=int(i);selectedRegion=site.region;regionOpen=true;popup={350,90};center(site.position);}
+      ImGui::SameLine();
+      if(button("Cancel"))sim.cancelSite(i);
       ImGui::PopID();
     }
   }
+
   void production(int site){
     for(int type=0;type<9;++type){
       auto reason=sim.unitReason(UnitType(type),site);
       ImGui::PushID(type);
-      std::string name=std::string(unitNames[type])+" $"+std::to_string(int(sim.unitCost(UnitType(type))));
+      std::string name=std::string(unitNames[type])+" | "+std::to_string(int(sim.unitCost(UnitType(type))))+" work";
       if(button(name.c_str(),reason.empty())){
         sim.queueUnit(UnitType(type),site);
         notice("Production queued");
       }
-      tooltip(reason.empty()?std::to_string(int(sim.unitDays(UnitType(type))))+" days to deploy":reason);
+      tooltip(reason.empty()?"Estimated "+std::to_string(int(std::ceil(sim.unitCost(UnitType(type))/std::max(0.01,sim.state.productionRate))))+" days with current allocation (shared by active jobs)":reason);
       ImGui::PopID();
     }
   }
@@ -510,24 +546,24 @@ struct App {
     flag(r.owner);
     ImGui::SameLine();
     ImGui::Text("Sector %d - %s",selectedRegion+1,r.owner==sim.state.player?"Controlled":"Rival");
-    ImGui::Text("Regional income: $%.1f/day",sim.regionIncome(selectedRegion));
-    ImGui::Text("Roads: level %d / 5",r.roads);
+    wrapped("Capture every settlement to secure this region. Move ground formations directly into the area.");
+    int held=0,total=0;
+    for(const auto& city:sim.state.settlements)if(city.region==selectedRegion){++total;held+=city.owner==sim.state.player;}
+    ImGui::Text("Settlements controlled: %d / %d",held,total);
+    for(const auto& city:sim.state.settlements)if(city.region==selectedRegion){
+      ImGui::TextColored(city.owner==sim.state.player?accent:ImVec4(0.9f,0.55f,0.45f,1),"%s | %.0f residents",city.name.c_str(),city.population);
+      if(city.capture>0)ImGui::ProgressBar(float(city.capture),{-1,0},"Contested");
+    }
     if(r.owner==sim.state.player){
-      std::string road="Upgrade roads: $"+std::to_string(int(sim.roadCost(selectedRegion)));
-      if(button(road.c_str(),r.roads<5&&sim.state.money>=sim.roadCost(selectedRegion)))sim.upgradeRoad(selectedRegion);
-      tooltip("Each road level adds 15% regional income and 20% ground movement speed.");
       if(button("Place a new building"))toggle(Build);
     }
-    else if(button(sim.state.war?"Order ground offensive":"Declare war",!sim.state.victory&&!sim.state.defeat)){
-      if(!sim.state.war)sim.declareWar();
-      else if(!sim.attack(selectedRegion))notice("Ground offensive needs an accessible frontier or amphibious capability");
-    }
+    else if(!sim.state.war&&button("Declare war",!sim.state.victory&&!sim.state.defeat))sim.declareWar();
     if(selectedSite>=0){
       auto& site=sim.state.sites[selectedSite];
       heading(facilityNames[int(site.type)]);
       if(site.remaining>0){
-        ImGui::Text("%.0f construction days left",site.remaining);
-        ImGui::ProgressBar(float(1-site.remaining/(site.type==Facility::Silo?120:35)));
+        ImGui::Text("%.0f production work remaining",site.remaining);
+        ImGui::ProgressBar(float(1-site.remaining/sim.buildCost(site.type)));
         if(button("Cancel construction",r.owner==sim.state.player)){
           sim.cancelSite(selectedSite);
           selectedSite=-1;
@@ -544,7 +580,7 @@ struct App {
     }
     if(r.capture>0&&r.owner!=sim.state.player)ImGui::ProgressBar(float(r.capture),{
       -1,0
-    },"Offensive progress");
+    },"Regional control");
     ImGui::End();
   }
   void unitPopup(){
@@ -558,12 +594,13 @@ struct App {
       -1,0
     },"Strength");
     if(unit.remaining>0){
-      ImGui::Text("Deploying in %.0f days",unit.remaining);
+      ImGui::Text("%.0f production work remaining",unit.remaining);
       ImGui::ProgressBar(float(1-unit.remaining/unit.total));
       if(button("Cancel production",unit.owner==sim.state.player))sim.cancelUnit(selectedUnit);
     }
     else if(unit.owner==sim.state.player){
       ImGui::Text("Selected formation: %zu units",selectedUnits.size());
+      ImGui::TextColored(muted,"Road movement bonus: +%.0f%%",100*sim.roadMovementBonus(unit.position));
       if(button("Move / attack - click destination")){
         commandMode=true;
         unitOpen=false;
@@ -577,37 +614,13 @@ struct App {
       }
       wrapped("Right-click a destination on the map. Drag a box to select multiple friendly units.");
     }
-    else wrapped("Static defending formation. No enemy command AI in this prototype.");
+    else wrapped("Enemy formation. Defensive AI responds to threatened settlements and nearby attacks.");
     ImGui::End();
-  }
-  void economyPanel(){
-    heading("NATIONAL ECONOMY");
-    ImGui::Text("Treasury: $%.0f",sim.state.money);
-    ImGui::Text("Income: $%.1f/day",sim.state.income);
-    ImGui::Text("Upkeep: $%.1f/day",sim.state.upkeep);
-    ImGui::Text("Net: %+.1f/day",sim.state.income-sim.state.upkeep);
-    wrapped("Farms, commercial districts and industrial districts generate money. Spend it on facilities, unit production, research and roads.");
-    ImGui::Separator();
-    for(size_t i=0;i<sim.state.sites.size();++i){
-      auto& site=sim.state.sites[i];
-      if(site.destroyed||sim.state.regions[site.region].owner!=sim.state.player)continue;
-      ImGui::PushID(int(i));
-      if(ImGui::Selectable(facilityNames[int(site.type)])){
-        selectedSite=int(i);
-        selectedRegion=site.region;
-        regionOpen=true;
-        popup={
-          350,90
-        };
-        center(site.position);
-      }
-      ImGui::TextColored(muted,"Sector %d | +$%.0f/day | %s",site.region+1,sim.buildingIncome(site.type),site.remaining>0?"constructing":site.enabled?"active":"off");
-      ImGui::PopID();
-    }
   }
   void forcesPanel(){
     heading("ARMED FORCES");
-    ImGui::Text("%.1f ground brigades",sim.state.brigades);
+    allocation();
+    wrapped("Select a formation, then right-click its destination. Ground units capture settlements automatically.");
     if(button(sim.state.war?"War in progress":"Declare war",!sim.state.war&&!sim.state.victory&&!sim.state.defeat))sim.declareWar();
     ImGui::Checkbox("Selected-unit / radar ranges",&showRanges);
     for(size_t i=0;i<sim.state.units.size();++i){
@@ -630,8 +643,11 @@ struct App {
     }
     heading("STRATEGIC WEAPONS");
     ImGui::Text("Warheads: %.0f",sim.state.stock[6]);
-    if(button("Produce warhead: $75000",sim.state.money>=75000&&sim.state.levels[4]>=4&&sim.state.levels[6]>=4))sim.produceWarhead();
-    tooltip("Requires nuclear deterrence and Computing centres research. Delivery requires intercontinental missiles and an operational missile site.");
+    if(button("Queue warhead | 1200 work",sim.state.levels[4]>=4&&sim.state.levels[6]>=4)){
+      if(!sim.produceWarhead())notice("Warhead production requires an operational factory and laboratory, with room in the 20-warhead limit");
+    }
+    tooltip("Requires nuclear deterrence and Computing centres research, an operational factory and laboratory. Delivery requires intercontinental missiles and an operational missile site.");
+    if(sim.state.warheadsQueued>0)ImGui::Text("%d warheads queued | %.0f work left",sim.state.warheadsQueued,sim.state.warheadWork);
     if(button("Review nuclear release",sim.state.war&&selectedRegion>=0&&sim.state.regions[selectedRegion].owner==sim.state.enemy&&sim.state.stock[6]>=1))ImGui::OpenPopup("Strategic release");
     if(ImGui::BeginPopupModal("Strategic release",nullptr,ImGuiWindowFlags_AlwaysAutoResize)){
       wrapped("This prototype's fixed retaliatory deterrent causes mutual destruction and ends the campaign. Confirming requires an operational missile site and delivery research.");
@@ -644,27 +660,6 @@ struct App {
       ImGui::EndPopup();
     }
   }
-  void roadsPanel(){
-    heading("REGIONAL INFRASTRUCTURE");
-    wrapped("Select a region on the map to upgrade its roads, income and movement capacity.");
-    for(size_t i=0;i<sim.state.regions.size();++i){
-      auto& r=sim.state.regions[i];
-      if(r.owner!=sim.state.player)continue;
-      ImGui::PushID(int(i));
-      std::string label="Sector "+std::to_string(i+1)+" | roads "+std::to_string(r.roads);
-      if(ImGui::Selectable(label.c_str())){
-        selectedRegion=int(i);
-        selectedSite=-1;
-        regionOpen=true;
-        popup={
-          350,90
-        };
-        center(r.center);
-      }
-      ImGui::TextColored(muted,"$%.0f/day | next upgrade $%.0f",sim.regionIncome(int(i)),sim.roadCost(int(i)));
-      ImGui::PopID();
-    }
-  }
   void researchTree(float w,float h){
     bool open=true;
     ImGui::SetNextWindowSize({
@@ -673,24 +668,37 @@ struct App {
     ImGui::SetNextWindowPos({
       24,66
     },ImGuiCond_Appearing);
-    ImGui::Begin("Research tree - 1920 to 2050",&open,ImGuiWindowFlags_NoCollapse);
+    ImGui::Begin("TECHNOLOGY COMMAND",&open,ImGuiWindowFlags_NoCollapse);
     auto& s=sim.state;
-    ImGui::Text("%.1f RP/day | specialization %s (+35%%)",s.researchRate,fieldNames[int(s.specialization)]);
-    float budget=float(s.researchBudget*100);
-    ImGui::SetNextItemWidth(230);
-    if(ImGui::SliderFloat("Research funding",&budget,0,100,"%.0f%%"))s.researchBudget=budget/100;
+    ImGui::Text("Research %.1f RP/day | Production %.1f work/day | Focus: %s",s.researchRate,s.productionRate,fieldNames[int(s.specialization)]);
+    allocation();
     ImGui::SameLine();
     ImGui::Checkbox("Auto queue doctrine",&autoResearch);
+    wrapped("Research is never locked by calendar year. Advanced projects cost more; increasing research allocation slows military construction and production.");
     if(!s.research.empty()){
       auto job=s.research.front();
+      double rate=s.researchRate*(sim.techs[job.tech].field==s.specialization?1.35:1);
       ImGui::Text("Active: %s | %zu queued",sim.techs[job.tech].name.c_str(),s.research.size());
-      ImGui::ProgressBar(float(job.progress/sim.techs[job.tech].cost),{
+      if(rate>0)ImGui::Text("~%.0f days remaining (includes doctrine bonus)",std::ceil(std::max(0.0,job.cost-job.progress)/rate));
+      else ImGui::TextColored(muted,"Paused: research has no active allocation or laboratory");
+      ImGui::ProgressBar(float(job.progress/job.cost),{
         300,0
       });
       ImGui::SameLine();
       if(button("Cancel active project"))sim.removeResearch(0);
     }
     else ImGui::TextColored(muted,"Click an available node to queue it. Drag scrollbars to browse the full century.");
+    if(s.research.size()>1){
+      ImGui::BeginChild("Research queue",{0,74},ImGuiChildFlags_Borders);
+      for(size_t q=1;q<s.research.size();++q){
+        ImGui::PushID(int(q));
+        ImGui::Text("%zu. %s",q+1,sim.techs[s.research[q].tech].name.c_str());
+        ImGui::SameLine();
+        if(button("Remove")){sim.removeResearch(q);ImGui::PopID();break;}
+        ImGui::PopID();
+      }
+      ImGui::EndChild();
+    }
     for(int f=0;f<8;++f){
       if(f)ImGui::SameLine();
       ImGui::PushID(f);
@@ -758,7 +766,7 @@ struct App {
       draw->AddText(ImGui::GetFont(),ImGui::GetFontSize(),{
         a.x+9,a.y+25
       },done?IM_COL32(175,219,185,255):available?IM_COL32(220,235,233,255):IM_COL32(157,168,176,255),tech.name.c_str(),nullptr,nodeW-18);
-      std::string state=done?"RESEARCHED":queued?"QUEUED":std::to_string(int(tech.cost))+" RP";
+      std::string state=done?"RESEARCHED":queued?"QUEUED":std::to_string(int(sim.researchCost(int(id))))+" RP";
       draw->AddText({
         a.x+9,b.y-17
       },border,state.c_str());
@@ -766,7 +774,7 @@ struct App {
         if(sim.queueResearch(int(id)))notice("Research queued: "+tech.name);
         else notice(sim.lockReason(int(id)));
       }
-      std::string detail=tech.effect;
+      std::string detail=tech.effect+"\nEffective cost: "+std::to_string(int(sim.researchCost(int(id))))+" RP";
       for(int parent:tech.prerequisites)detail+="\nRequires: "+sim.techs[parent].name;
       auto reason=sim.lockReason(int(id));
       if(!reason.empty())detail+="\n"+reason;
@@ -792,16 +800,12 @@ struct App {
     ImGui::SetNextWindowSize({
       330,std::min(h-134,610.0f)
     },ImGuiCond_Appearing);
-    const char* title=panel==Build?"Construction":panel==Economy?"Economy":panel==Forces?"Forces":panel==Infrastructure?"Infrastructure":"Command log";
+    const char* title=panel==Build?"Construction":panel==Forces?"Forces":"Command log";
     ImGui::Begin(title,&open,ImGuiWindowFlags_NoCollapse);
     switch(panel){
       case Build:buildPanel();
       break;
-      case Economy:economyPanel();
-      break;
       case Forces:forcesPanel();
-      break;
-      case Infrastructure:roadsPanel();
       break;
       case Log:for(auto& event:sim.state.events)wrapped(event);
       break;
@@ -880,6 +884,67 @@ struct App {
       p.x+4,p.y+6
     },color);
   }
+  void pressureOverlay(ImDrawList* draw){
+    if(!sim.state.war||camera.zoom<3)return;
+    // Screen-space sampling follows individual units rather than region edges.
+    // Bilinear colour fades paint pressure; marching squares traces opposition.
+    const float cell=24;
+    int columns=int(std::ceil(camera.width/cell))+1,rows=int(std::ceil(camera.height/cell))+1;
+    struct Sample { Point screen; double value=0; bool land=false; };
+    std::vector<Sample> samples(size_t(columns)*rows);
+    auto color=[](double value){
+      int alpha=int(std::clamp(std::abs(value)*54.0,0.0,54.0));
+      return value>=0?IM_COL32(66,218,176,alpha):IM_COL32(233,104,86,alpha);
+    };
+    for(int y=0;y<rows;++y)for(int x=0;x<columns;++x){
+      auto& sample=samples[size_t(y)*columns+x];
+      sample.screen={camera.x+x*cell,camera.y+y*cell};
+      auto geo=camera.unproject(sample.screen);
+      if(!geo)continue;
+      sample.value=sim.frontlinePressure(*geo);
+      if(std::abs(sample.value)>0.001){
+        sample.land=sim.regionAt(*geo)>=0;
+        if(!sample.land)sample.value=0;
+      }
+    }
+    for(int y=0;y<rows-1;++y)for(int x=0;x<columns-1;++x){
+      const Sample* corners[]={&samples[size_t(y)*columns+x],&samples[size_t(y)*columns+x+1],&samples[size_t(y+1)*columns+x+1],&samples[size_t(y+1)*columns+x]};
+      if(!corners[0]->land||!corners[1]->land||!corners[2]->land||!corners[3]->land)continue;
+      draw->AddRectFilledMultiColor(vec(corners[0]->screen),vec(corners[2]->screen),color(corners[0]->value),color(corners[1]->value),color(corners[2]->value),color(corners[3]->value));
+      std::vector<Point> crossings;
+      for(int edge=0;edge<4;++edge){
+        auto& a=*corners[edge];auto& b=*corners[(edge+1)%4];
+        if(!a.land||!b.land||a.value*b.value>=0||std::max(std::abs(a.value),std::abs(b.value))<0.005)continue;
+        double t=a.value/(a.value-b.value);
+        crossings.push_back({a.screen.x+(b.screen.x-a.screen.x)*t,a.screen.y+(b.screen.y-a.screen.y)*t});
+      }
+      for(size_t n=1;n<crossings.size();n+=2)draw->AddLine(vec(crossings[n-1]),vec(crossings[n]),IM_COL32(246,193,108,225),2);
+    }
+  }
+  void roadsOverlay(ImDrawList* draw){
+    if(camera.zoom<6)return;
+    double aspect=camera.width/camera.height;
+    double radius=camera.globe?std::asin(std::min(1.0,std::hypot(aspect,1.0)/camera.zoom))*57.2957795:180.0*std::hypot(1.0,1.0/aspect)/camera.zoom;
+    if(camera.globe&&std::abs(camera.latitude)+radius>=89)radius=180;
+    for(int id:world.nearbyRoads({camera.longitude,camera.latitude},radius+0.3)){
+      const auto& road=world.roads[size_t(id)];
+      for(size_t n=1;n<road.points.size();++n){
+      // Subdivide long source segments so orthographic roads follow the globe.
+      Point a=road.points[n-1],b=road.points[n];
+      double dx=std::remainder(b.x-a.x,360.0),dy=b.y-a.y;
+      int steps=std::clamp(int(std::ceil(std::hypot(dx,dy)/0.25)),1,80);
+      bool previousVisible=false;
+      Point previous=camera.project(a,&previousVisible);
+      for(int part=1;part<=steps;++part){
+        double t=double(part)/steps;
+        bool visible=false;
+        Point current=camera.project({std::remainder(a.x+dx*t,360.0),a.y+dy*t},&visible);
+        if(visible&&previousVisible&&std::abs(current.x-previous.x)<camera.width/2)draw->AddLine(vec(previous),vec(current),IM_COL32(196,175,132,130),camera.zoom>30?1.6f:1.0f);
+        previous=current;previousVisible=visible;
+      }
+      }
+    }
+  }
   void mapLabels(){
     if(screen==Menu)return;
     auto* draw=ImGui::GetBackgroundDrawList();
@@ -888,6 +953,8 @@ struct App {
     },{
       camera.x+camera.width,camera.y+camera.height
     },true);
+    roadsOverlay(draw);
+    if(screen==Game)pressureOverlay(draw);
     std::vector<Point> named;
     if(camera.zoom>2.5)for(size_t i=0;i<world.countries.size();++i){
       if(world.canonical(int(i))!=int(i)||world.countries[i].code=="ATA")continue;
@@ -905,6 +972,26 @@ struct App {
     }
     if(screen==Game){
       auto& s=sim.state;
+      std::vector<Point> cityLabels;
+      for(const auto& city:s.settlements){
+        bool visible=false;
+        auto p=camera.project(city.position,&visible);
+        if(!visible)continue;
+        auto color=city.owner==s.player?IM_COL32(148,232,199,255):IM_COL32(241,160,129,255);
+        float radius=city.population>500000?4.0f:3.0f;
+        draw->AddCircleFilled(vec(p),radius+2,IM_COL32(9,17,22,245));
+        draw->AddCircleFilled(vec(p),radius,color);
+        if(city.capture>0){
+          draw->PathArcTo(vec(p),radius+5,-1.5708f,-1.5708f+float(city.capture)*6.28318f,24);
+          draw->PathStroke(IM_COL32(248,202,98,245),0,2);
+        }
+        bool clear=camera.zoom>8&&(city.population>0||city.region==selectedRegion||camera.zoom>60);
+        for(auto previous:cityLabels)if(std::hypot(previous.x-p.x,previous.y-p.y)<100)clear=false;
+        if(clear){
+          draw->AddText({float(p.x)+8,float(p.y)-7},color,city.name.c_str());
+          cityLabels.push_back(p);
+        }
+      }
       for(size_t i=0;i<s.sites.size();++i){
         auto& site=s.sites[i];
         if(site.destroyed)continue;
@@ -922,7 +1009,7 @@ struct App {
           float(p.x)-4,float(p.y)-7
         },color,symbols[int(site.type)]);
         if(site.remaining>0){
-          float progress=float(1-site.remaining/(site.type==Facility::Silo?120:35));
+          float progress=float(1-site.remaining/sim.buildCost(site.type));
           draw->PathArcTo(vec(p),13,-1.5708f,-1.5708f+progress*6.28318f,20);
           draw->PathStroke(IM_COL32(234,180,84,255),0,2);
         }
@@ -937,14 +1024,19 @@ struct App {
         auto& unit=s.units[i];
         if(unit.health<=0)continue;
         bool visible;
-        auto p=camera.project(unit.position,&visible);
+        auto p=camera.project(displayedUnit(i),&visible);
         if(!visible)continue;
         bool selected=std::find(selectedUnits.begin(),selectedUnits.end(),int(i))!=selectedUnits.end();
         auto color=unit.owner==s.player?IM_COL32(135,229,211,255):IM_COL32(243,140,117,255);
         if(unit.remaining>0)color=IM_COL32(222,184,95,210);
         if(selected&&unit.moving){
-          auto target=camera.project(unit.destination);
-          if(std::abs(target.x-p.x)<camera.width)draw->AddLine(vec(p),vec(target),IM_COL32(128,222,200,150),1.5f);
+          Point previous=p;
+          bool previousVisible=true;
+          for(auto waypoint:unit.waypoints){
+            bool visible=false;auto target=camera.project(waypoint,&visible);
+            if(visible&&previousVisible&&std::abs(target.x-previous.x)<camera.width/2)draw->AddLine(vec(previous),vec(target),IM_COL32(128,222,200,150),1.5f);
+            previous=target;previousVisible=visible;
+          }
         }
         unitSymbol(draw,p,unit.type,color,selected);
         draw->AddRectFilled({
@@ -952,8 +1044,9 @@ struct App {
         },{
           float(p.x)-10+20*float(unit.health/100),float(p.y)+12
         },color);
-        if(selected||camera.zoom>35){
-          std::string text=unit.remaining>0?std::to_string(int(std::ceil(unit.remaining)))+"d":unitNames[int(unit.type)];
+        bool hovered=!ImGui::GetIO().WantCaptureMouse&&std::hypot(pointer.x-p.x,pointer.y-p.y)<14;
+        if(selected||hovered){
+          std::string text=unit.remaining>0?std::to_string(int(std::ceil(unit.remaining)))+" work":unitNames[int(unit.type)];
           draw->AddText({
             float(p.x)+14,float(p.y)-7
           },color,text.c_str());
@@ -963,34 +1056,6 @@ struct App {
             unit.position.x+3,unit.position.y
           });
           draw->AddCircle(vec(p),float(std::hypot(edge.x-p.x,edge.y-p.y)),IM_COL32(129,215,197,75),64,1);
-        }
-      }
-      for(size_t r=0;r<s.regions.size();++r)if(s.regions[r].owner==s.player)for(int next:s.regions[r].neighbours)if(s.regions[next].owner==s.enemy){
-        bool av,bv;
-        auto a=camera.project(s.regions[r].center,&av),b=camera.project(s.regions[next].center,&bv);
-        if(av&&bv){
-          double dx=b.x-a.x,dy=b.y-a.y,len=std::hypot(dx,dy);
-          if(len>1){
-            Point mid{
-              (a.x+b.x)/2,(a.y+b.y)/2
-            };
-            double half=std::min(35.0,len*0.3);
-            draw->AddLine(vec({
-              mid.x-dy/len*half,mid.y+dx/len*half
-            }),vec({
-              mid.x+dy/len*half,mid.y-dx/len*half
-            }),IM_COL32(236,168,79,210),3);
-          }
-        }
-      }
-      if(s.target>=0){
-        bool visible;
-        auto p=camera.project(s.regions[s.target].center,&visible);
-        if(visible){
-          draw->AddCircle(vec(p),24,IM_COL32(240,166,73,220),32,2);
-          draw->AddText({
-            float(p.x)+28,float(p.y)-7
-          },IM_COL32(240,181,104,255),(std::to_string(int(s.regions[s.target].capture*100))+"% contested").c_str());
         }
       }
       if(construction>=0&&!ImGui::GetIO().WantCaptureMouse){
@@ -1026,7 +1091,7 @@ struct App {
         w/2-180,70
       },ImGuiCond_Appearing);
       ImGui::Begin("Campaign result",nullptr,ImGuiWindowFlags_AlwaysAutoResize);
-      wrapped(sim.state.victory?"Victory: rival territory secured":"Campaign ended in mutual destruction");
+      wrapped(sim.state.victory?"Victory: rival territory secured":sim.state.nuclearUsed?"Campaign ended in mutual destruction":"Defeat: all home regions have been captured");
       ImGui::End();
     }
     if(ImGui::BeginPopupModal("Command pause",nullptr,ImGuiWindowFlags_AlwaysAutoResize)){
@@ -1037,6 +1102,9 @@ struct App {
           sim.state=Campaign{
           };
           panel=None;
+          clearSelection();
+          previousUnitPositions.clear();
+          accumulator=0;
           ImGui::CloseCurrentPopup();
         }
       }
@@ -1053,7 +1121,8 @@ struct App {
       mainMenu(w,h);
     }
     else{
-      controls();
+      if(screen==Game)sim.refreshRates();
+      controls(dt);
       mapLabels();
       if(screen==Select)selection(w,h);
       else game(w,h);
@@ -1066,6 +1135,8 @@ struct App {
           sim.queueResearch(int(i));
           break;
         }
+        previousUnitPositions.clear();
+        for(auto& unit:sim.state.units)previousUnitPositions.push_back(unit.position);
         sim.tick();
         accumulator-=0.25;
         if(sim.state.day-sim.state.lastAutosave>=365){
@@ -1149,16 +1220,36 @@ int main(int argc,char** argv){
         if(frame==8){app.panel=App::Research;app.treeFocus=true;}if(frame==10)app.panel=App::Build;if(frame==12){app.panel=App::None;app.selectedRegion=app.sim.state.capital;app.regionOpen=true;app.popup={1000,180};}if(frame==14){app.regionOpen=false;app.panel=App::Forces;}
         if(frame==14){
           app.sim.declareWar();
-          for(int i=24;i<48;++i)for(int n:app.sim.state.regions[i].neighbours)if(n<24){
-            app.sim.state.money=10000;
-            app.sim.state.stock[2]=500;
-            app.sim.connect(app.sim.state.capital,n);
-            app.sim.attack(i);
+          for(size_t n=0;n<app.sim.techs.size();++n)if(app.sim.available(int(n))){app.sim.queueResearch(int(n));break;}
+          for(size_t n=0;n<app.sim.state.sites.size();++n)if(app.sim.state.sites[n].type==Facility::ArmyBase){app.sim.queueUnit(UnitType::Infantry,int(n));break;}
+          if(!app.sim.state.units.empty()){
+            for(const auto& city:app.sim.state.settlements)if(city.owner==app.sim.state.enemy){
+              app.sim.orderUnitAt(0,city.position);
+              break;
+            }
           }
+          app.sim.tick();
         }
       }
       if(smoke&&frame==16){app.panel=App::None;app.selectedUnit=0;app.selectedUnits={0};app.unitOpen=true;app.popup={1000,180};app.center(app.sim.state.units[0].position);app.camera.zoom=64;}
-      if(smoke&&frame==18){app.unitOpen=false;app.panel=App::Economy;app.centerNation(app.selectedNation);}
+      if(smoke&&frame==18){
+        app.unitOpen=false;app.panel=App::None;
+        // A compact frontline scene exercises cities, source road data, pressure
+        // paint and contested-settlement progress independently of AI outcomes.
+        for(auto& city:app.sim.state.settlements)if(city.owner==app.sim.state.enemy){
+          app.center(city.position);app.camera.zoom=40;city.capture=0.42;
+          int friendly=-1,enemy=-1;
+          for(size_t n=0;n<app.sim.state.units.size();++n){
+            auto& unit=app.sim.state.units[n];
+            if(unit.remaining>0||unit.type!=UnitType::Infantry)continue;
+            if(unit.owner==app.sim.state.player&&friendly<0)friendly=int(n);
+            if(unit.owner==app.sim.state.enemy&&enemy<0)enemy=int(n);
+          }
+          if(friendly>=0){auto& unit=app.sim.state.units[friendly];unit.position={city.position.x-0.28,city.position.y};unit.moving=false;}
+          if(enemy>=0){auto& unit=app.sim.state.units[enemy];unit.position={city.position.x+0.28,city.position.y};unit.moving=false;}
+          break;
+        }
+      }
       app.frame(float(w),float(h),smoke?0.016:dt);
       ImGui::Render();
       app.renderer.render(app.world,app.sim.state,app.camera,app.selectedNation,app.selectedRegion,fw,fh,float(fw)/w,float(fh)/h);

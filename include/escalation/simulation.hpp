@@ -26,6 +26,7 @@ namespace escalation {
     Point position,destination;
     double health=100,remaining=0,total=0;
     std::vector<int> path;
+    std::vector<Point> waypoints;
     bool moving=false;
   };
   struct Tech {
@@ -58,7 +59,14 @@ namespace escalation {
   };
   struct ResearchJob {
     int tech=0;
-    double progress=0;
+    double progress=0,cost=0;
+  };
+  struct Settlement {
+    std::string name;
+    Point position;
+    double population=0;
+    int region=-1,owner=-1;
+    double capture=0;
   };
   struct Campaign {
     int player=-1,enemy=-1,day=0,capital=0,enemyCapital=0,target=-1;
@@ -69,30 +77,38 @@ namespace escalation {
     std::array<double,resourceCount> stock{},delta{};
     std::array<int,8> levels{};
     std::vector<Region> regions;
+    std::vector<Settlement> settlements;
     std::vector<Site> sites;
     std::vector<Unit> units;
     std::vector<Route> routes;
     std::vector<bool> completed;
     std::deque<ResearchJob> research;
     std::deque<std::string> events;
-    double researchRate=0,power=0,powerDemand=0,income=0,upkeep=0;
+    double outputRate=0,productionRate=0,researchRate=0,power=0,powerDemand=0,income=0,upkeep=0;
+    int warheadsQueued=0;
+    double warheadWork=0;
     int lastAutosave=0;
   };
   class Simulation {
     const World* world_;
     void log(const std::string& text);
-    void economy();
+    void economy(bool advance=true);
     void researchTick();
     void combat();
     void unitsTick();
+    bool planUnitMovement(Unit& unit,Point destination);
     public: std::vector<Tech> techs;
     Campaign state;
     explicit Simulation(const World& world):world_(&world),techs(makeTechTree()){} void start(int nation,Field focus=Field::Economy,bool simpleEconomy=true);
     void tick();
+    void refreshRates(){economy(false);}
     int year() const{
       return 1920+state.day/365;
     }
     double connection(int region) const;
+    double researchCost(int tech) const;
+    double frontlinePressure(Point position) const;
+    double roadMovementBonus(Point position) const;
     bool available(int tech) const;
     std::string lockReason(int tech) const;
     bool queueResearch(int tech);

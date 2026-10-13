@@ -23,7 +23,7 @@ int main(int argc,char** argv){
       sim.tick();
     }
     double seconds=std::chrono::duration<double>(std::chrono::steady_clock::now()-begin).count();
-    std::cout<<"Countries: "<<world.countries.size()<<"; simulated regions: "<<sim.state.regions.size()<<"; technologies: "<<sim.techs.size()<<"\nDays: "<<sim.state.day<<"; year: "<<sim.year()<<"; treasury: "<<sim.state.money<<"; ticks/sec: "<<days/seconds<<"\n";
+    std::cout<<"Countries: "<<world.countries.size()<<"; simulated regions: "<<sim.state.regions.size()<<"; settlements: "<<sim.state.settlements.size()<<"; technologies: "<<sim.techs.size()<<"\nDays: "<<sim.state.day<<"; year: "<<sim.year()<<"; output/day: "<<sim.state.outputRate<<"; ticks/sec: "<<days/seconds<<"\n";
     return 0;
   }
   catch(const std::exception& e){

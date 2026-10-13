@@ -3,6 +3,8 @@
 #include "gl.hpp"
 #include "assets.hpp"
 #include <optional>
+#include <algorithm>
+#include <cmath>
 namespace escalation {
   struct Camera {
     bool globe=true,terrain=true;
@@ -10,6 +12,57 @@ namespace escalation {
     float x=0,y=60,width=900,height=600;
     Point project(Point p,bool* visible=nullptr) const;
     std::optional<Point> unproject(Point p) const;
+  };
+  // Exponential easing consumes motion in geographic space and preserves the
+  // geographic point below the wheel cursor throughout each zoom animation.
+  struct CameraMotion {
+    Point pending{},zoomAnchor{};
+    double desiredZoom=0;
+    bool zooming=false;
+    void reset(){ pending={}; zooming=false; }
+    void pan(Point delta){ pending.x+=delta.x; pending.y+=delta.y; }
+    void wheel(const Camera& c,Point anchor,double steps){
+      desiredZoom=std::clamp((zooming?desiredZoom:c.zoom)*std::exp(steps*0.16),c.globe?0.55:0.8,512.0);
+      zoomAnchor=anchor; zooming=true;
+    }
+    void advance(Camera& c,double dt){
+      dt=std::clamp(dt,0.0,0.1);
+      double ease=1-std::exp(-18*dt);
+      c.longitude=std::remainder(c.longitude+pending.x*ease,360.0);
+      c.latitude=std::clamp(c.latitude+pending.y*ease,-89.0,89.0);
+      pending.x*=1-ease; pending.y*=1-ease;
+      if(zooming){
+        auto before=c.unproject(zoomAnchor);
+        c.zoom=std::exp(std::log(c.zoom)+(std::log(desiredZoom)-std::log(c.zoom))*ease);
+        auto after=c.unproject(zoomAnchor);
+        if(before&&after&&!c.globe){
+          c.longitude=std::remainder(c.longitude+std::remainder(before->x-after->x,360.0),360.0);
+          c.latitude=std::clamp(c.latitude+before->y-after->y,-89.0,89.0);
+        }
+        else if(before&&after){
+          // Solve the orthographic tilt and longitude so the cursor's original
+          // geographic point remains fixed, including near the dateline.
+          constexpr double rad=0.017453292519943295;
+          double aspect=c.width/c.height;
+          double sx=((zoomAnchor.x-c.x)*2/c.width-1)*aspect/c.zoom;
+          double sy=(1-(zoomAnchor.y-c.y)*2/c.height)/c.zoom;
+          double sz=std::sqrt(std::max(0.0,1-sx*sx-sy*sy));
+          double radius=std::hypot(sy,sz),target=std::sin(before->y*rad);
+          if(radius>0&&std::abs(target)<=radius){
+            double angle=std::asin(std::clamp(target/radius,-1.0,1.0)),offset=std::atan2(sy,sz);
+            double tilt=std::remainder(angle-offset,2*3.141592653589793)/rad;
+            double alternate=std::remainder(3.141592653589793-angle-offset,2*3.141592653589793)/rad;
+            if(std::abs(alternate)<=89&&std::abs(alternate-c.latitude)<std::abs(tilt-c.latitude))tilt=alternate;
+            if(std::abs(tilt)<=89){
+              c.latitude=tilt;
+              double pz=-sy*std::sin(tilt*rad)+sz*std::cos(tilt*rad);
+              c.longitude=std::remainder(before->x-std::atan2(sx,pz)/rad,360.0);
+            }
+          }
+        }
+        if(std::abs(std::log(desiredZoom/c.zoom))<1e-6)zooming=false;
+      }
+    }
   };
   class Renderer {
     struct Vertex {

@@ -2,7 +2,7 @@
 
 A native C++17 / OpenGL 3.3 strategy prototype about building a nation before committing it to war. Inspired by the conventional/nuclear escalation of **ICBM: Escalation** and the map-led national management of **State of Command**, with original code and presentation.
 
-Version 0.2 focuses on **map-led command, research and a direct currency economy**. The map fills the play area; the HUD opens temporary panels, and selecting land, buildings or units opens contextual controls. The complete Natural Earth world is rendered, while only your nation and one rival receive simulation. Rival forces are static; a deterministic planner places starting sites.
+Version 0.3 replaces the currency/resource loop with **shared research and military production**, automatic local combat and settlement-based occupation. Camera movement and zoom are eased, and real roads and populated places are bundled offline. The complete Natural Earth world is rendered; one nation and one rival receive detailed simulation.
 
 ![Native map and national command](docs/map.png)
 
@@ -10,15 +10,14 @@ Version 0.2 focuses on **map-led command, research and a direct currency economy
 
 ## Playable now
 
-- Country selection directly on land, flag-backed nation previews, reference statistics, history and specialization.
-- 177 source map features, 170 playable territory groups after six explicit small-state merges and Antarctica exclusion. These are fictional gameplay groups using modern borders.
-- Globe and flat projections, pointer-focused wheel zoom up to 512×, close-up unit/building symbols and shaded relief from real Natural Earth III elevation imagery.
-- 24 clipped gameplay subregions per active nation, changing ownership and frontier indicators.
-- A connected, scrollable **112-node research tree**, eight fields, 1920–2050 decade gates, branch/cross-branch prerequisites, funding, queue cancellation and optional specialization auto-queue.
-- Direct map construction, currency costs, daily income buildings, upkeep, cancellation refunds and five road-upgrade levels per region.
-- Nine visible unit families: infantry, armour, artillery, fighters, bombers, destroyers, submarines, special forces and missile batteries. Facility-specific production, research unlocks, movement orders, box selection, strength bars and contextual controls.
-- Conventional regional capture and expensive strategic warheads with an explicit scripted mutual-destruction consequence.
-- Pause/time speeds, shortcuts, tooltips, saves, annual autosaves and save-on-exit. All art/data needed to play is bundled; assets are not downloaded at runtime.
+- Nation selection, flags, reference statistics, globe/flat projections and bundled shaded relief.
+- Smooth camera panning with WASD/arrows and middle/right drag; eased pointer-focused zoom up to 512×. Unit rendering interpolates daily simulation positions.
+- 24 clipped gameplay regions per active nation, imported population centers, decluttered city labels and strategic road lines. Ground units on an imported road receive a 15% movement bonus.
+- Regional output shared between research and construction/unit production. Multiple production jobs split the available work; idle allocations redirect to the active side. The old extraction and currency economy is retired.
+- Prerequisite research with a saved work cost: early technology is always accessible once its prerequisites are met, with an increasing cost premium for research ahead of its reference era.
+- Military facilities, contextual unit production, nine differentiated unit families, and strategic warheads that consume shared production work. Nuclear release retains the confirmed scripted second-strike outcome.
+- Move forces directly into hostile areas after declaring war. Local units fight automatically; a region changes hands when every town/city/objective in it is held. A reactive enemy defends incursions and attempts to retake occupied settlements.
+- Land-clipped unit pressure and frontline graphics, pause/speed controls, saves, autosaves and save migration.
 
 ## Build on Bazzite with Podman
 
@@ -92,23 +91,23 @@ For Linux render smoke tests without a desktop, install `libegl1 libgl1-mesa-dri
 
 ## First campaign
 
-1. Start game, click a nation on the map, review its preview and take command. The campaign opens paused.
-2. Open Research (`R`), click an available node and set research funding. Space starts time.
-3. Open Build (`B`), choose a building, then click controlled land. Shift repeats placement; right click cancels it. Normal construction takes 35 days.
-4. Farms, commercial districts, industrial districts and power stations generate currency. Click a region to improve roads and its income.
-5. Click an army base, arms plant, airbase or coastal shipyard to produce compatible units. Some unit families require research. Units appear on the map while being produced.
-6. Select units individually or with a drag box. Right click to move; declare war through Forces (`U`) before ordering an invasion. Capture needs arriving ground forces; air/naval units provide abstract support.
-7. Strategic warheads cost $75,000 and require nuclear/research technology. Delivery needs further research and an operational missile site. The confirmation explains the POC's fixed second strike.
+1. Select a nation and take command. Campaigns open paused.
+2. Open Research (`R`), queue a project and choose the research/production allocation. Early projects show their additional work cost. Space starts time.
+3. Open Build (`B`), choose a military/industrial facility, then click controlled land. Shift repeats placement; right click cancels placement. Construction and queued units consume the same production allocation.
+4. Select an operational army base, arms plant, airbase or coastal shipyard to queue compatible units. No treasury or hidden resource inventory is required.
+5. Select units or drag a selection box; right click controlled land to move. Declare war through Forces (`U`) before entering hostile territory. Move to enemy settlements to capture them. Every regional objective must be held before ownership transfers.
+6. Use the pressure overlay and city control markers to inspect occupation and enemy counterattacks. Roads improve nearby ground movement by 15%.
+7. Nuclear/science research unlocks warhead production at an operational arms plant and laboratory. Delivery also requires missile research and a missile site. Release is explicitly confirmed and ends this prototype campaign through its scripted second strike.
 
 | Control | Action |
 | --- | --- |
-| Left click land | Preview nation / open regional orders |
-| Left click symbol | Building production / unit controls |
+| Left click land/symbol | Nation, region, building or unit context |
 | Drag box / Shift click | Select formation / add unit |
 | Right click | Order selected units / cancel construction |
-| Right drag | Rotate globe / pan map |
-| Mouse wheel | Zoom toward pointer, up to 512× |
-| B / R / U | Construction / research / forces panel |
+| WASD / Arrow keys | Smooth camera pan |
+| Middle drag / Right drag | Smooth globe rotation / map pan |
+| Mouse wheel | Eased zoom toward pointer |
+| B / R / U | Construction / research / forces |
 | G / H / F | Projection / fit nation / focus selected unit |
 | Space | Pause / resume |
 | F5 / F9 | Save / load newest save |
@@ -120,11 +119,11 @@ Saves use `%APPDATA%/Escalation` on Windows, or `$XDG_DATA_HOME/escalation` / `~
 
 The default clock advances four simulated days per real second: 1920 to 2055 takes about **3 hours 25 minutes at 1x**. Early conquest can end the POC sooner; 2–4 hour match balance is a design target, not a validated playtime claim.
 
-The nine unit families have production, movement and abstract combat support. This is an original prototype inspired by public descriptions of the reference games, **not full ICBM: Escalation feature parity**. It does not implement detailed air missions, carriers, interception, fog of war, diplomacy, terrain-aware navigation, continuous tactical fronts or autonomous enemy orders.
+The military and city-capture systems are an original implementation of the requested foundation. This build does **not** claim full ICBM: Escalation feature or balance parity. Detailed air missions, equipment loadouts, radar/fog, missile interception, carriers, diplomacy and full-world simultaneous AI remain future work.
 
-Subregions are clipped gameplay Voronoi cells, not historical provinces. Ground orders follow an owned-region graph; sea and air movement are direct strategic paths. Frontier indicators update after capture but do not solve a continuous tactical frontage. The 2048×1024 relief raster is visual relative elevation, not metre-scale terrain or landcover. Deep zoom enlarges the 1:110m coastlines; higher-detail geometry/texture LOD is future work.
+Subregions are clipped gameplay Voronoi cells, not historical provinces. Generalized Natural Earth roads are strategic data, not street-level navigation. Imported city coordinates/population are modern references; regions without a source city use clearly labeled strategic objectives. The 2048×1024 relief raster is visual elevation, not movement terrain. Deep zoom enlarges the 1:110m coastlines.
 
-Version-2 saves persist placed sites, roads, unit production, positions and orders. Core compatibility retains the earlier resource-chain economy; the graphical client upgrades restored campaigns to the currency economy. Changed territory groups or research prerequisites can invalidate some old snapshots; keep their backups.
+Version-3 saves persist settlement ownership/capture and frozen research costs alongside units, buildings and production. Earlier snapshots are migrated to the new economy and capture objectives; changed geography or research prerequisites can invalidate a snapshot. Loading validates a candidate before replacing the running campaign.
 
 Brief historical introductions are curated for eight nations; others use clearly labelled scenario introductions. Natural Earth GDP/population are modern reference data. Flag aliases and territorial grouping are explicit gameplay choices, not diplomatic claims. Full-world simultaneous simulation and 2–4 hour balance remain targets requiring benchmarks and playtests.
 
