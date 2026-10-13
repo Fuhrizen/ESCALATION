@@ -1,0 +1,40 @@
+{
+  "flags": {
+    "source": "https://github.com/lipis/flag-icons",
+    "commit": "086f7e97d657358203916dbe84f61c2bccaa81eb",
+    "license": "MIT",
+    "svgCount": 175,
+    "mapFeaturesCovered": 177,
+    "atlasSize": [
+      1536,
+      864
+    ],
+    "aliases": {
+      "CYN": "CY",
+      "SOL": "SO"
+    }
+  },
+  "terrain": {
+    "creator": "Tom Patterson / Natural Earth III",
+    "terms": "https://www.shadedrelief.com/natural3/pages/use.html",
+    "license": "public domain",
+    "provenance": "https://blog.mastermaps.com/2013/09/creating-webgl-earth-with-threejs.html",
+    "download": "https://raw.githubusercontent.com/turban/webgl-earth/7a97cb3f7ed917540d13959ad904e0116a7bffd8/images/elev_bump_4k.jpg",
+    "sourceGitBlob": "22ee4ff384b071f31b12394c603178a10c34f260",
+    "sourceSha256": "078ce6b67ad45594bda48e5c98a60b68375174a8142f613ca4fd6041c8439341",
+    "sourceSize": [
+      4096,
+      2048
+    ],
+    "bundledSize": [
+      2048,
+      1024
+    ],
+    "processing": "grayscale8, Lanczos downsample, lossless PNG",
+    "limitations": "Normalized relative elevation used only for visual shaded relief; not metres, a DEM for movement, landcover, or historical terrain."
+  },
+  "bundledSha256": {
+    "data/flags-atlas.png": "323c930d2d5f0f14d506368d3016bde4f8e6b05f4b2133d1af8645043bd2133c",
+    "data/terrain-height.png": "7cc22eb0bc501c3de7384421a397d5a84b58ecb96f3628313139c50d6746a140"
+  }
+}

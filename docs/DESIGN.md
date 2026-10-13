@@ -1,67 +1,42 @@
-# Design: industrial preparation, controlled escalation
+# Design: map command and controlled escalation
 
-## Player promise
+Version 0.2 changes the default loop to nation preview → income construction → research → facility-based unit production → visible movement → conventional capture. The map occupies the screen between two compact HUD bars. Management panels exist only when opened; contextual land/building/unit windows appear on selection.
 
-The player controls a nation, rather than an isolated arsenal. War draws down stocks produced in peace; research changes the ways those stocks can be created and used. A nation that overcommits without maintaining power and transport will stall before territory is secured.
+## Campaign and economy
 
-## Campaign structure
+The alternate-history campaign starts in 1920 with modern geometry. 24 generated regions in each of two active nations receive simulation; a deterministic land-site planner places facilities and four infantry formations per side. Rival formations and regional resistance remain static.
 
-The technical prototype starts in 1920 using modern borders. The intended long campaign progresses toward the 2050s, with a 2–4 hour baseline duration and faster optional speeds. Each decade exposes another linear tier in eight research branches. A permanent selected specialization improves that branch's research progress by 35%; it never blocks access to the rest of the tree.
+At 1×, one day takes 0.25 real seconds. 1920–2055 takes about 3h 25m; conquest can finish sooner. The 2–4 hour design goal is not measured match balance.
 
-A daily simulation tick takes 0.25 real seconds at 1x. 135 years × 365 days × 0.25 seconds = 12,318.75 seconds, or 3h 25m 19s. The calendar intentionally uses fixed 365-day years. Prototype conquest can finish sooner. Future scenarios need measured playtests, escalating rival defences and objective pacing to meet the duration target.
+All costs/outputs are fictional currency units. Construction pays its full cost upfront. Normal sites take 35 days; missile sites 120. Cancelling unfinished construction or unit production refunds 50% once. Regions allow eight sites and five road levels. Each road level adds 15% regional building income and 20% movement speed. Economy research improves output and baseline national income; Logistics improves movement. Research centres turn funded upkeep into research points.
 
-## First playable loop
+| Building | Currency cost | Gross daily income / role |
+| --- | ---: | --- |
+| Farm | 650 | 8 |
+| Commercial district | 1500 | 18 |
+| Industrial district | 2200 | 25 |
+| Power station | 1200 | 12; utility income in this simplified model |
+| Research centre | 2000 | Base 6 RP × funding/research modifiers |
+| Army base | 1600 | Ground-unit production |
+| Arms plant | 1800 | Ground-unit production |
+| Airbase | 2800 | Air-unit production; air research gate |
+| Shipyard | 3500 | Naval production / amphibious access; coast and naval research required |
+| Missile site | 18000 | Missile production / strategic delivery; distinct research gates |
+| Radar station | 2200 | Visual range marker; no detection/fog simulation yet |
+| Command centre | 500 | Administrative site |
 
-Nation preview -> take command paused -> inspect reserves -> choose research -> build and connect sites -> resume -> manage shortages -> recruit -> declare war -> capture a supplied frontier -> extend transport -> continue.
+Baseline national income is 20/day; upkeep includes operational buildings, units and research funding. Income is reduced by lost stability. The earlier extraction/refining resource economy remains in the headless core for regression and old snapshots, but new graphical campaigns use currency only.
 
-Static defence makes the prototype useful for observing the player's economy. Enemy AI, scripted aggression and enemy economic automation are excluded; rival facilities exist as capture targets. Starting-site placement is deterministic and based on generated resource/development scores, occupancy and valid land samples.
+## Research and units
 
-## Economy
+The tree has 112 projects: eight fields × fourteen decade tiers, 1920–2050. Edges show preceding-tier and explicit cross-field requirements. Decade gates impose linear escalation; specialization grants 35% progress in one branch. A 12-job queue persists progress; the active project can be cancelled. Economy, research and logistics affect their respective rates; military branches unlock unit families and increase abstract combat support. Dates are scenario gates, not precise invention claims.
 
-All quantities are fictional game units. Modern country GDP provides only a bounded starting tax modifier; the model is not an economic forecast.
+Nine unit families have separate costs, production times, markers and movement classes. Ground production occurs at army bases/arms plants; air at airbases; naval at coastal shipyards; missile batteries at missile sites. Research gates advanced production. Unfinished units cannot move. Formation capacity is 120 living player units. Ground units follow owned-region adjacency plus a target frontier; researched, operational shipyards enable abstract amphibious transfer. Air and sea orders use direct strategic movement, without obstacle/navigation simulation.
 
-| Facility | Inputs / constraints | Output per simulated day at base efficiency |
-| --- | --- | --- |
-| Mine | Power, supply; local ore quality | 3 × ore quality ore |
-| Oil well | Power, supply; local oil quality | 2 × oil quality crude oil |
-| Steelworks | 2 ore; power and supply | 1.4 steel |
-| Refinery | 1.5 crude oil; power and supply | 1.2 fuel |
-| Arms factory | 0.6 steel, 0.25 fuel; power and supply | 1.4 supplies + 0.45 equipment |
-| Power plant | Connected supply | 18 grid capacity |
-| Laboratory | Power, supply, funding, treasury upkeep | Base 4 RP × funding factor |
-| Supply depot | Connected supply | Capital/distribution site |
-| Shipyard | Fleet logistics, 1 steel, 0.5 fuel | 0.8 equipment; enables amphibious supply |
-| Missile silo | Intercontinental missiles; supplied construction | Strategic delivery capability |
+An invasion requires declared war. Arriving ground forces are required for capture; nearby assigned air/naval forces add abstract support. Regional resistance governs progress and attrition. Ownership, regional economy and strategic frontier indicators change after capture. Conquering all rival regions wins. The single active offensive target and static defender are deliberate POC constraints.
 
-Extraction feeds refining before factories run in a stable daily ordering. Inventories are bounded; no recipe can consume more than available stocks. Grid shortage scales production. Bankrupt countries operate at reduced throughput and lose stability. Upkeep includes facilities, brigades and research spending.
+## Strategic weapons and next work
 
-Each enabled route starts at eight throughput units. Upgrades add four. Logistics research adds 15% capacity per tier. A facility's inbound capacity is the widest path from the capital, bounded by the weakest route on that path. Multiple sites in one sector share its inbound capacity. National inventories remain pooled: this is an intentionally simple transport abstraction, with per-edge shared-flow scheduling deferred.
+Warheads require nuclear and research branches and cost 75,000. Nuclear delivery additionally requires intercontinental missile research and an operational missile site. Release is explicitly confirmed. The rival's fixed second strike disables industry, destroys much of the treasury, reduces stability and ends the campaign. This is scripted MAD, not a model of interception, fallout or survivable delivery systems.
 
-Construction costs treasury and 30 steel upfront. Normal facilities take 35 supplied days; silos take 120. Disconnected construction pauses. Facility and route toggles let players shed demand or test interruptions. Newly captured sectors begin without a player's supply route.
-
-## Research
-
-112 projects cover eight fields and fourteen decade gates (1920 through 2050). Each project requires the preceding project in its branch. Nuclear deterrence additionally requires Computing centres in the Research branch. Research is queued, has persistent progress, and can be cancelled. Dates are scenario progression gates, not assertions about the precise historical invention of technologies. Future-era titles are speculative.
-
-Effects are implemented as branch levels. Economy increases industrial output and income; Research increases lab output; Logistics increases capacity. Army improves brigade strength/attrition; Air, Naval and Special Operations add combat support. Ballistic capability unlocks warhead stockpiling and delivery. Units are abstract at this stage; an explicit unit/prototype catalog will replace the support modifiers later.
-
-## Conventional war
-
-Brigades cost $1,000 and 20 equipment. An offensive targets one adjacent enemy sector connected to a supplied friendly sector. Defenders are static regional resistance values. Daily progress uses brigade strength, researched support, fuel, supplies and route capacity. Attrition reduces brigades. Captured sites join the player's economy but need supplied routes to function. Naval research and a connected, completed shipyard allow a landing when no supplied land adjacency exists.
-
-The front overlay shows enemy/friendly sector adjacencies. It moves after capture. It is not a continuous tactical front with unit manoeuvre, terrain or separate formations. Conquering all rival sectors wins the POC; exhausting forces loses it.
-
-## Strategic weapons
-
-Warhead production requires 1950-era Ballistic and Research capabilities, $25,000, 400 steel and 250 fuel. Delivery needs a completed, enabled, connected silo, unlocked in the 1960 tier, costing $18,000 and 120 construction days.
-
-The POC's rival has a fixed retaliatory deterrent. A player must explicitly confirm that strategic release triggers a scripted second strike, destroys most reserves, disables industry, reduces stability and forces, and ends the campaign in mutual destruction. This makes conventional victory economically preferable. It is a deliberately coarse rule: delivery/interception simulation, mobile launchers, survivable second-strike forces, arms control, escalation thresholds and persistent fallout are future work.
-
-## Incremental roadmap
-
-1. Validate this economy loop with desktop playtests and production-rate telemetry.
-2. Add explicit unit families, equipment templates, maintenance and facility-specific build queues.
-3. Replace pooled stocks with depot inventories and shared-capacity cargo scheduling; introduce terrain/port constraints.
-4. Add continuous fronts and formation-level orders, then optional enemy AI.
-5. Activate additional nations in budgets; add diplomacy, trade and deterrence models.
-6. Benchmark 177-nation simulation, add geometry LOD and high-resolution administrative data only where needed.
+Next iterations need playtesting, terrain/port-aware navigation, distinct weapon ranges and air missions, detection/fog of war, dynamic defenders, continuous fronts and expanded diplomacy. Geometry/texture LOD and regional/spatial caches should precede full-world activation. This project implements original mechanics inspired by public descriptions, not every ICBM: Escalation system.

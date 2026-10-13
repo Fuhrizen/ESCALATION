@@ -1,23 +1,43 @@
 # Native application screenshots
 
-Captured from the running OpenGL application using its Linux EGL smoke mode. These are functional UI screens, not design mockups.
+Captured from the running version-0.2 OpenGL application using Linux EGL smoke mode. These are functional UI screens, not mockups.
 
 ## Main menu
 
 ![Main menu](main-menu.png)
 
-## Globe and national command
+## Select a nation on the map
 
-![Globe](globe.png)
+![Select a nation on the map](nation-selection.png)
 
-## Flat map and subregions
+## Globe command
 
-![Flat map](map.png)
+![Globe command](globe.png)
 
-## Research
+## Map-first HUD and visible forces
 
-![Research](research.png)
+![Map-first HUD and visible forces](map.png)
 
-## Industry
+## Connected research tree
 
-![Industry](industry.png)
+![Connected research tree](research.png)
+
+## Map construction catalogue
+
+![Map construction catalogue](industry.png)
+
+## Contextual regional upgrades
+
+![Contextual regional upgrades](region.png)
+
+## Forces and strategic weapons
+
+![Forces and strategic weapons](forces.png)
+
+## Close-up unit command at 64× zoom
+
+![Close-up unit command at 64× zoom](units.png)
+
+## Currency income and upkeep
+
+![Currency income and upkeep](economy.png)

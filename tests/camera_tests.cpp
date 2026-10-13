@@ -13,13 +13,14 @@ int main(){
     c.y=60;
     c.zoom=1;
     int checks=0;
-    for(bool globe:{false,true})for(double longitude:{-179.0,0.0,179.0})for(double latitude:{-65.0,0.0,65.0}){
+    for(double zoom:{1.0,8.0,64.0,512.0})for(bool globe:{false,true})for(double longitude:{-179.0,0.0,179.0})for(double latitude:{-65.0,0.0,65.0}){
       c.globe=globe;
+      c.zoom=zoom;
       c.longitude=longitude;
       c.latitude=latitude;
       for(int dx=-60;dx<=60;dx+=20)for(int dy=-20;dy<=20;dy+=10){
         Point point{
-          std::remainder(longitude+dx,360.0),std::clamp(latitude+dy,-85.0,85.0)
+          std::remainder(longitude+dx/zoom,360.0),std::clamp(latitude+dy/zoom,-85.0,85.0)
         };
         bool visible;
         auto screen=c.project(point,&visible);

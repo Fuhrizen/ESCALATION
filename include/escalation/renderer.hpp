@@ -1,10 +1,11 @@
 #pragma once
 #include "simulation.hpp"
 #include "gl.hpp"
+#include "assets.hpp"
 #include <optional>
 namespace escalation {
   struct Camera {
-    bool globe=true;
+    bool globe=true,terrain=true;
     double longitude=15,latitude=22,zoom=0.88;
     float x=0,y=60,width=900,height=600;
     Point project(Point p,bool* visible=nullptr) const;
@@ -26,7 +27,8 @@ namespace escalation {
     public: std::vector<RegionShape> shapes;
     std::string version;
     size_t landVertices=0;
-    void initialise(const World& world);
+    SurfaceAssets assets;
+    void initialise(const World& world,const std::string& data="data");
     void campaign(const World& world,const Campaign& state);
     void render(const World& world,const Campaign& state,const Camera& camera,int selectedNation,int selectedRegion,int framebufferWidth,int framebufferHeight,float scaleX,float scaleY);
     void shutdown();

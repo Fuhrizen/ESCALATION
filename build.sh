@@ -41,7 +41,7 @@ for target in $targets; do
  executable='escalation'
  headless='escalation_headless'
  if [ "$target" = windows ]; then executable='escalation.exe'; headless='escalation_headless.exe'; fi
- for item in "$executable" "$headless" data/world.geojson data/histories.json README.md THIRD_PARTY_NOTICES.md; do
+ for item in "$executable" "$headless" data/world.geojson data/histories.json data/nation-groups.json data/flags.json data/flags-atlas.png data/terrain-height.png data/assets.json README.md THIRD_PARTY_NOTICES.md; do
   if [ ! -f "$staging/$item" ]; then
    printf 'Incomplete package: %s missing. Previous output has been preserved. Staging: %s\n' "$item" "$staging" >&2
    exit 1

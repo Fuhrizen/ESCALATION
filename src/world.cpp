@@ -7,6 +7,7 @@
 #include <set>
 #include <random>
 #include <limits>
+#include <filesystem>
 namespace mapbox {
   namespace util {
     template<> struct nth<0,escalation::Point>{
@@ -57,7 +58,7 @@ namespace escalation {
     return -1;
   }
   int World::pick(Point p) const{
-    for(size_t i=0;i<countries.size();++i)if(countries[i].contains(p))return int(i);
+    for(size_t i=0;i<countries.size();++i)if(countries[i].contains(p))return canonical(int(i));
     return -1;
   }
   void World::load(const std::string& file,const std::string& histories){
@@ -155,12 +156,16 @@ namespace escalation {
       auto h=readJson(histories);
       for(auto& c:countries)if(h.contains(c.code))c.history=h.get(c.code).get<std::string>();
     }
+    auto grouping=std::filesystem::path(file).parent_path()/"nation-groups.json";
+    if(std::filesystem::exists(grouping))applyGroups(grouping.string());
   }
   int World::opponent(int nation) const{
+    nation=canonical(nation);
     auto& c=countries.at(nation);
     int best=-1;
     double d=std::numeric_limits<double>::max();
     auto consider=[&](int i){
+      i=canonical(i);
       if(i==nation||countries[i].code=="ATA")return;
       double n=distance(c.center,countries[i].center);
       if(n<d){
@@ -264,4 +269,16 @@ namespace escalation {
     }
     return regions;
   }
+  int World::canonical(int nation) const {
+    if(nation<0||nation>=int(countries.size()))return -1;
+    for(int depth=0;depth<8&&countries[nation].group>=0;++depth)nation=countries[nation].group;
+    return nation;
+  }
+  void World::applyGroups(const std::string& file){
+    auto mapping=field(readJson(file),"groups").get<Object>();
+    for(auto& [from,to]:mapping){int child=find(from),parent=find(to.get<std::string>());if(child<0||parent<0||child==parent)throw std::runtime_error("Invalid nation group");countries[child].group=parent;}
+    for(size_t i=0;i<countries.size();++i){int parent=canonical(int(i));if(parent==int(i))continue;auto& source=countries[i];auto& target=countries[parent];target.polygons.insert(target.polygons.end(),source.polygons.begin(),source.polygons.end());target.triangles.insert(target.triangles.end(),source.triangles.begin(),source.triangles.end());source.triangles.clear();target.population+=source.population;target.gdp+=source.gdp;target.name+=" + "+source.name;target.neighbours.insert(target.neighbours.end(),source.neighbours.begin(),source.neighbours.end());}
+    for(size_t i=0;i<countries.size();++i){auto& ns=countries[i].neighbours;std::vector<int> grouped;for(int n:ns){int root=canonical(n);if(root!=canonical(int(i)))grouped.push_back(root);}std::sort(grouped.begin(),grouped.end());grouped.erase(std::unique(grouped.begin(),grouped.end()),grouped.end());ns=std::move(grouped);}
+  }
+
 }

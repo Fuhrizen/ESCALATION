@@ -1,6 +1,6 @@
 # Reference research and design decisions
 
-Reviewed 12 October 2026. This project draws on publicly described mechanics; it contains no extracted code, UI assets or private implementation details from either reference game.
+Reviewed 12–13 October 2026. This project draws on publicly described mechanics; it contains no extracted code, UI assets or private implementation details from either reference game.
 
 ## ICBM: Escalation
 
@@ -34,3 +34,13 @@ Primary sources: [GLFW 3.4 documentation](https://www.glfw.org/docs/3.4/), [Dear
 GLFW supplies portable desktop windows and contexts; OpenGL 3.3 supplies GPU map rendering; Dear ImGui supplies a functional native-process interface; earcut handles polygon holes; picojson keeps core data import/save dependencies small. Geometry is cached rather than parsed or triangulated every frame. The simulation can be tested separately from graphics.
 
 Dear ImGui is rendered in the native application, not a browser/WebView. It does not use platform-standard OS widgets; it uses its own immediate-mode controls.
+
+## Map-first revision sources
+
+[Slitherine developer diary 7](https://www6.slitherine.com/news/icbm-escalation-dev-diary-7) describes territory economics, regional inspection and readiness tradeoffs. [Diary 4](https://www6.slitherine.com/news/icbm-escalation-dev-diary-4) describes the investment behind strategic weapons. These informed contextual map controls and costly escalation; the project's income formulas, tree layout and unit systems are original. No proprietary UI/assets or implementation were copied.
+
+Flags come from [lipis/flag-icons](https://github.com/lipis/flag-icons), pinned at the commit in `data/assets.json`, under MIT. All 177 map records have a mapped flag; disputed/nonstandard records use documented aliases.
+
+Terrain comes from Tom Patterson's [Natural Earth III](https://www.shadedrelief.com/natural3/pages/use.html), whose images/data are public domain. Bjørn Sandvik's [source tutorial](https://blog.mastermaps.com/2013/09/creating-webgl-earth-with-threejs.html) identifies the Natural Earth III elevation bump map used by [turban/webgl-earth](https://github.com/turban/webgl-earth). The exact 4096×2048 source file is pinned by commit, Git blob and SHA-256 in `data/assets.json`. The bundled lossless grayscale raster is downsampled to 2048×1024. It is visual normalized elevation, not elevation in metres, landcover or a movement DEM.
+
+Rebake offline with `python3 tools/prepare_assets.py --height-source /path/to/elev_bump_4k.jpg`, from the repository root. This maintenance tool needs Pillow, librsvg, cairo and gobject; ordinary game builds use the bundled PNGs and require none of those asset-baking packages.

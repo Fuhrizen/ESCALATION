@@ -1,0 +1,4 @@
+{
+  "description": "Gameplay-only compact territory groups; not a historical or diplomatic border dataset.",
+  "groups": {"LUX":"BEL", "CYN":"CYP", "SOL":"SOM", "BRN":"MYS", "TLS":"IDN", "GMB":"SEN"}
+}

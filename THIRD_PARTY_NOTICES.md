@@ -6,4 +6,8 @@
 - **GLFW** 3.4: zlib/libpng licence. Fetched by CMake; licence reproduced in `third_party/licenses/glfw.txt`.
 - **Dear ImGui** v1.91.8, Omar Cornut and contributors: MIT. Fetched by CMake; licence reproduced in `third_party/licenses/imgui.txt`. Its bundled stb-derived files and embedded OpenGL loader carry their original upstream notices in fetched source.
 
+- **flag-icons**, lipis and contributors: MIT. 175 original 4:3 SVG flags pinned at `086f7e97d657358203916dbe84f61c2bccaa81eb`, baked into an atlas covering 177 map records. Source: https://github.com/lipis/flag-icons . Full licence: `third_party/licenses/flag-icons.txt`.
+- **Natural Earth III elevation**, Tom Patterson: public domain, https://www.shadedrelief.com/natural3/pages/use.html . Bundled shaded-relief input derived from the 4096×2048 bump image distributed by Bjørn Sandvik, https://github.com/turban/webgl-earth ; pinned source and hashes in `data/assets.json`. This is a visual relative-height texture.
+- **stb_image** v2.30, Sean Barrett and contributors: MIT or public domain. Vendored header Git blob `9eedabedc45b3e6fd88fae6f14a160b4d53272ec`, https://github.com/nothings/stb/blob/master/stb_image.h ; complete dual licence in `third_party/licenses/stb_image.txt`.
+
 ICBM: Escalation, State of Command and their associated marks belong to their respective owners. They are inspiration references; no game assets or code from those products are included.

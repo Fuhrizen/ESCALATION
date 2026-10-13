@@ -12,6 +12,7 @@ namespace escalation {
   };
   struct Country {
     std::string code,name,history;
+    int group=-1;
     double population=0,gdp=0;
     Point label,center;
     std::vector<Polygon> polygons;
@@ -28,6 +29,8 @@ namespace escalation {
     public: std::vector<Country> countries;
     void load(const std::string& file,const std::string& histories="");
     int pick(Point p) const;
+    int canonical(int nation) const;
+    void applyGroups(const std::string& file);
     int find(const std::string& code) const;
     int opponent(int nation) const;
     std::vector<RegionShape> subdivide(int nation,int count=24) const;

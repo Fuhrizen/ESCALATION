@@ -9,7 +9,7 @@
 namespace escalation {
   const std::array<const char*,resourceCount> resourceNames={"Ore","Crude oil","Steel","Fuel","Supplies","Equipment","Warheads"};
   const std::array<const char*,8> fieldNames={"Army","Air","Naval","Special operations","Ballistic","Economy","Research","Logistics"};
-  const std::array<const char*,10> facilityNames={"Mine","Oil well","Steelworks","Refinery","Arms factory","Power plant","Laboratory","Supply depot","Shipyard","Missile silo"};
+  const std::array<const char*,16> facilityNames={"Mine","Oil field","Steelworks","Refinery","Arms plant","Power station","Research centre","Command centre","Shipyard","Missile site","Army base","Airbase","Radar station","Farm","Industrial district","Commercial district"};
   static const char* names[8][14]={ {"Combined arms","Motorised infantry","Armoured divisions","Main battle tanks","Mechanised doctrine","Reactive armour","Digital command","Precision artillery","Networked brigades","Active protection","Autonomous support","Robotic formations","Distributed armour","Adaptive battle groups"}, {"Biplane reconnaissance","Monoplane fighters","Strategic bombers","Jet propulsion","Supersonic aviation","Airborne early warning","Multirole fighters","Stealth aircraft","Uncrewed reconnaissance","Precision air support","Collaborative drones","Adaptive propulsion","Distributed air combat","Autonomous air wings"}, {"Fleet logistics","Carrier aviation","Radar escorts","Nuclear propulsion","Missile destroyers","Attack submarines","Aegis screening","Quiet propulsion","Littoral operations","Stealth surface ships","Uncrewed vessels","Distributed fleets","Autonomous escorts","Integrated maritime command"}, {"Raiding doctrine","Signals interception","Airborne operations","Long range patrols","Special forces","Electronic warfare","Counterterror teams","Satellite reconnaissance","Joint special operations","Cyber reconnaissance","Uncrewed infiltration","Decision support","Distributed intelligence","Adaptive reconnaissance"}, {"Rocket experiments","Liquid fuel rockets","Guided missiles","Nuclear deterrence","Intercontinental missiles","Multiple warheads","Mobile launchers","Precision guidance","Missile defence","Hypersonic research","Boost glide systems","Space surveillance","Resilient deterrence","Strategic command networks"}, {"Industrial electrification","Assembly lines","Wartime conversion","Automation","Containerisation","Computerised industry","Flexible manufacturing","Global supply chains","Lean production","Smart factories","Industrial robotics","Circular production","Fusion pilot grids","Autonomous industry"}, {"National laboratories","Research institutes","Applied science","Computing centres","Integrated circuits","Scientific computing","Supercomputers","Networked laboratories","Open research networks","Machine learning tools","Advanced simulation","Materials discovery","Quantum research","Accelerated discovery"}, {"Rail mobilisation","Truck logistics","Forward depots","Strategic airlift","Intermodal freight","Supply planning","Digital inventories","Satellite tracking","Predictive routing","Resilient distribution","Autonomous convoys","Adaptive depots","Distributed reserves","Self organising logistics"}};
   std::vector<Tech> makeTechTree(){
     std::vector<Tech> result;
@@ -21,11 +21,20 @@ namespace escalation {
       t.tier=tier;
       t.year=1920+tier*10;
       t.cost=400+double(tier)*220;
-      t.effect=f==0?"+12% brigade strength and reduced combat attrition":f==1?"Air support improves offensive strength":f==2?"Naval support and amphibious operations improve":f==3?"Reconnaissance reduces regional defensive resistance":f==4?"Strategic deterrence readiness and silo capability":f==5?"+10% industrial output and +8% tax income":f==6?"+12% research output": "+15% route throughput and supply efficiency";
+      t.effect=f==0?"+12% brigade strength and reduced combat attrition":f==1?"Air support improves offensive strength":f==2?"Naval support and amphibious operations improve":f==3?"Reconnaissance reduces regional defensive resistance":f==4?"Strategic deterrence readiness and silo capability":f==5?"+10% industrial output and +8% tax income":f==6?"+12% research output": "Improve strategic movement and legacy route throughput";
       if(f==4&&tier==3)t.effect="Unlock expensive nuclear warhead production; requires Computing centres";
-      if(f==4&&tier==4)t.effect="Unlock missile silos and nuclear delivery";
+      if(f==4&&tier==4)t.effect="Unlock nuclear delivery";
+      if(f==0&&tier==0)t.effect="Unlock armoured brigades; upgrade ground combat";
+      if(f==1&&tier==0)t.effect="Unlock fighters and airbases";
+      if(f==2&&tier==0)t.effect="Unlock shipyards, destroyers and amphibious supply";
       if(tier>0)t.prerequisites.push_back(f*14+tier-1);
       if(f==4&&tier==3)t.prerequisites.push_back(6*14+3);
+      if(f==0&&tier==2)t.prerequisites.push_back(5*14+1);
+      if((f==1||f==2)&&tier==3)t.prerequisites.push_back(6*14+3);
+      if(f==3&&tier==4)t.prerequisites.push_back(0*14+3);
+      if(f==5&&tier==6)t.prerequisites.push_back(6*14+5);
+      if(f==7&&tier==4)t.prerequisites.push_back(5*14+3);
+      if(f==6&&tier==4)t.prerequisites.push_back(5*14+3);
       result.push_back(t);
     }
     return result;
@@ -34,9 +43,11 @@ namespace escalation {
     state.events.push_front("Day "+std::to_string(state.day)+": "+s);
     if(state.events.size()>80)state.events.pop_back();
   }
-  void Simulation::start(int nation,Field focus){
+  void Simulation::start(int nation,Field focus,bool simpleEconomy){
     if(nation<0||nation>=int(world_->countries.size())||world_->countries[nation].code=="ATA")throw std::runtime_error("Select a playable nation");
+    nation=world_->canonical(nation);
     state=Campaign{};
+    state.simpleEconomy=simpleEconomy;
     state.player=nation;
     state.enemy=world_->opponent(nation);
     if(state.enemy<0)throw std::runtime_error("No opponent available");
@@ -72,12 +83,14 @@ namespace escalation {
           }
         }
         state.sites.push_back({best,type,0,1,true});
+        state.sites.back().position=state.regions[best].center;
         return best;
       };
       int cap=choose(Facility::Depot);
       if(country==state.player)state.capital=cap;
       else state.enemyCapital=cap;
-      for(Facility f:{Facility::PowerPlant,Facility::Mine,Facility::OilWell,Facility::Steelworks,Facility::Refinery,Facility::Factory,Facility::Laboratory}){
+      std::vector<Facility> starting=simpleEconomy?std::vector<Facility>{Facility::PowerPlant,Facility::Farm,Facility::Commercial,Facility::IndustrialPark,Facility::Factory,Facility::Laboratory,Facility::ArmyBase,Facility::Airbase}:std::vector<Facility>{Facility::PowerPlant,Facility::Mine,Facility::OilWell,Facility::Steelworks,Facility::Refinery,Facility::Factory,Facility::Laboratory};
+      for(Facility f:starting){
         int r=choose(f);
         state.routes.push_back({cap,r,8,true});
       }
@@ -95,13 +108,20 @@ namespace escalation {
     }
     state.regions[a].neighbours.push_back(b);
     state.regions[b].neighbours.push_back(a);
-    log("Command established. Build stockpiles, research and supply routes before committing forces.");
+    for(int country:{state.player,state.enemy}){
+      std::vector<int> sectors;for(size_t i=0;i<state.regions.size();++i)if(state.regions[i].nation==country)sectors.push_back(int(i));
+      Point enemyCentre=world_->countries[country==state.player?state.enemy:state.player].center;
+      std::sort(sectors.begin(),sectors.end(),[&](int x,int y){return distance(state.regions[x].center,enemyCentre)<distance(state.regions[y].center,enemyCentre);});
+      for(int n=0;n<4;++n){Unit unit;unit.owner=country;unit.region=sectors[n];unit.position=state.regions[unit.region].center;unit.destination=unit.position;state.units.push_back(unit);}
+    }
+    log("Command established. Build income, research and regional infrastructure before committing forces.");
     if(world_->countries[nation].neighbours.empty())log("Island start: nearest nation is a maritime rival. Naval research and a supplied shipyard enable a landing.");
     economy();
     state.delta.fill(0);
   }
   double Simulation::connection(int region) const{
     if(region<0||region>=int(state.regions.size())||state.regions[region].owner!=state.player)return 0;
+    if(state.simpleEconomy)return 8*(1+0.2*state.regions[region].roads);
     std::vector<double> best(state.regions.size());
     std::priority_queue<std::pair<double,int>> q;
     best[state.capital]=1e9;
@@ -145,27 +165,30 @@ namespace escalation {
     if(index<state.research.size())state.research.erase(state.research.begin()+std::ptrdiff_t(index));
   }
   double Simulation::buildCost(Facility type) const {
-    static double cost[]={800,1000,1400,1400,1800,1200,2000,500,3500,18000};
+    static double cost[]={800,1000,1400,1400,1800,1200,2000,500,3500,18000,1600,2800,2200,650,2200,1500};
     int i=int(type);
-    return i>=0&&i<10?cost[i]:1e30;
+    return i>=0&&i<16?cost[i]:1e30;
   }
   std::string Simulation::buildReason(int region,Facility type) const {
     if(region<0||region>=int(state.regions.size())||state.regions[region].owner!=state.player)return "Build on controlled land";
-    if(int(type)<0||int(type)>=10)return "Invalid facility";
+    if(int(type)<0||int(type)>=16)return "Invalid facility";
     if(state.money<buildCost(type))return "Insufficient treasury";
-    if(state.stock[2]<30)return "Requires 30 steel";
+    if(!state.simpleEconomy&&state.stock[2]<30)return "Requires 30 steel";
+    if(type==Facility::Airbase&&state.levels[1]<1)return "Research Biplane reconnaissance first";
+    if(type==Facility::Radar&&state.levels[1]<2)return "Research Monoplane fighters first";
     if(type==Facility::Shipyard&&state.levels[2]<1)return "Research Fleet logistics first";
-    if(type==Facility::Silo&&state.levels[4]<5)return "Research Intercontinental missiles first";
+    if(type==Facility::Silo&&state.levels[4]<(state.simpleEconomy?2:5))return "Research Liquid fuel rockets first";
     int count=0;
-    for(auto& s:state.sites)if(s.region==region)++count;
-    if(count>=4)return "Region has four sites";
+    for(auto& s:state.sites)if(s.region==region&&!s.destroyed)++count;
+    if(count>=(state.simpleEconomy?8:4))return "Region has reached its building capacity";
     return "";
   }
   bool Simulation::build(int region,Facility type){
     if(!buildReason(region,type).empty())return false;
     state.money-=buildCost(type);
-    state.stock[2]-=30;
+    if(!state.simpleEconomy)state.stock[2]-=30;
     state.sites.push_back({region,type,type==Facility::Silo?120.0:35.0,0,true});
+    state.sites.back().position=state.regions[region].center;
     log(std::string("Construction ordered: ")+facilityNames[int(type)]);
     return true;
   }
@@ -210,11 +233,25 @@ namespace escalation {
       if(state.levels[2]<1||!shipyard)return false;
     }
     state.target=region;
+    if(state.simpleEconomy)for(size_t i=0;i<state.units.size();++i)if(state.units[i].owner==state.player&&state.units[i].remaining<=0&&int(state.units[i].type)<=2)orderUnit(i,region);
     log("Offensive ordered in sector "+std::to_string(region+1));
     return true;
   }
   void Simulation::economy(){
     auto before=state.stock;
+    if(state.simpleEconomy){
+      state.income=20*(1+0.08*state.levels[5])*state.stability/100;state.upkeep=0;state.power=0;state.powerDemand=0;state.researchRate=0;
+      for(auto& site:state.sites){site.efficiency=0;if(site.destroyed||!site.enabled||state.regions[site.region].owner!=state.player)continue;
+        if(site.remaining>0){site.remaining=std::max(0.0,site.remaining-1);continue;}
+        site.efficiency=1;state.upkeep+=site.type==Facility::Silo?8:1;
+        double factor=(1+0.15*state.regions[site.region].roads)*(1+0.1*state.levels[5]);state.income+=buildingIncome(site.type)*factor*state.stability/100;
+        if(site.type==Facility::PowerPlant)state.power+=30;
+        if(site.type==Facility::Laboratory){state.researchRate+=6*(0.2+1.6*state.researchBudget)*(1+0.12*state.levels[6]);state.upkeep+=12*state.researchBudget;}
+      }
+      for(auto& unit:state.units)if(unit.owner==state.player&&unit.health>0)state.upkeep+=unit.remaining>0?0.25:0.6+int(unit.type)*0.1;
+      state.money=std::max(0.0,state.money+state.income-state.upkeep);if(state.money<=0)state.stability=std::max(10.0,state.stability-0.1);
+      state.delta.fill(0);return;
+    }
     state.income=(22+std::min(40.0,std::sqrt(std::max(0.0,world_->countries[state.player].gdp))/80))*(1+0.08*state.levels[5])*state.stability/100;
     state.upkeep=state.brigades*0.65;
     state.power=0;
@@ -288,6 +325,14 @@ namespace escalation {
     }
   }
   void Simulation::combat(){
+    if(state.simpleEconomy){
+      if(!state.war||state.target<0)return;auto& region=state.regions[state.target];if(region.owner!=state.enemy){state.target=-1;return;}
+      double strength=0;int groundCount=0;for(auto& unit:state.units)if(unit.owner==state.player&&unit.health>0&&unit.remaining<=0&&unit.target==state.target&&!unit.moving){double d=distance(unit.position,region.center);if(d>1.5)continue;double weight=unit.type==UnitType::Armour?1.8:unit.type==UnitType::Artillery?1.4:0.8;strength+=weight*unit.health/100;if(int(unit.type)<=2||unit.type==UnitType::SpecialForces)++groundCount;unit.health=std::max(0.0,unit.health-0.10*region.defense);}
+      if(groundCount==0)return;strength*=1+0.12*state.levels[0]+0.03*state.levels[1]+0.02*state.levels[3];
+      region.capture=std::clamp(region.capture+(strength/(4*region.defense)-0.35)*0.018,0.0,1.0);
+      if(region.capture>=1){region.owner=state.player;state.money+=500;log("Sector secured. Its economy is now under your control.");for(auto& unit:state.units)if(unit.owner==state.enemy&&unit.region==state.target)unit.health=0;state.target=-1;int held=0,total=0;for(auto& r:state.regions)if(r.nation==state.enemy){++total;if(r.owner==state.player)++held;}if(held==total){state.victory=true;state.war=false;log("Rival territory secured: victory");}}
+      return;
+    }
     if(!state.war||state.target<0)return;
     auto& r=state.regions[state.target];
     if(r.owner!=state.enemy){
@@ -334,14 +379,14 @@ namespace escalation {
     auto before=state.stock;
     economy();
     researchTick();
+    unitsTick();
     combat();
     for(int i=0;i<resourceCount;++i)state.delta[i]=state.stock[i]-before[i];
   }
   bool Simulation::produceWarhead(){
-    if(state.levels[4]<4||state.levels[6]<4||state.money<25000||state.stock[2]<400||state.stock[3]<250||state.stock[6]>=20)return false;
-    state.money-=25000;
-    state.stock[2]-=400;
-    state.stock[3]-=250;
+    if(state.levels[4]<4||state.levels[6]<4||state.money<(state.simpleEconomy?75000:25000)||(!state.simpleEconomy&&(state.stock[2]<400||state.stock[3]<250))||state.stock[6]>=20)return false;
+    state.money-=state.simpleEconomy?75000:25000;
+    if(!state.simpleEconomy){state.stock[2]-=400;state.stock[3]-=250;}
     state.stock[6]+=1;
     log("Strategic warhead stockpiled. Conventional victory remains possible.");
     return true;
@@ -350,7 +395,7 @@ namespace escalation {
     if(!state.war||state.stock[6]<1||region<0||region>=int(state.regions.size())||state.regions[region].owner!=state.enemy)return false;
     bool ready=false;
     for(auto& s:state.sites)if(s.type==Facility::Silo&&s.enabled&&s.remaining<=0&&state.regions[s.region].owner==state.player&&connection(s.region)>0)ready=true;
-    if(!ready)return false;
+    if(!ready||(state.simpleEconomy&&state.levels[4]<5))return false;
     state.stock[6]-=1;
     state.nuclearUsed=true;
     state.regions[region].owner=state.player;
@@ -373,7 +418,8 @@ namespace escalation {
     auto n=[&](const char* k,double v){
       o[k]=num(v);
     };
-    n("version",1);
+    n("version",2);
+    n("simple",state.simpleEconomy);
     o["player"]=str(world_->countries[state.player].code);
     o["enemy"]=str(world_->countries[state.enemy].code);
     n("day",state.day);
@@ -398,6 +444,7 @@ namespace escalation {
       Object v;
       v["owner"]=str(world_->countries[r.owner].code);
       v["capture"]=num(r.capture);
+      v["roads"]=num(r.roads);
       regions.push_back(Json(v));
     }
     o["regions"]=Json(regions);
@@ -408,9 +455,11 @@ namespace escalation {
       v["type"]=num(int(s.type));
       v["remaining"]=num(s.remaining);
       v["enabled"]=num(s.enabled);
+      v["x"]=num(s.position.x);v["y"]=num(s.position.y);v["destroyed"]=num(s.destroyed);
       sites.push_back(Json(v));
     }
     o["sites"]=Json(sites);
+    Array units;for(auto& u:state.units){Object v;v["owner"]=str(world_->countries[u.owner].code);v["region"]=num(u.region);v["target"]=num(u.target);v["source"]=num(u.sourceSite);v["type"]=num(int(u.type));v["x"]=num(u.position.x);v["y"]=num(u.position.y);v["dx"]=num(u.destination.x);v["dy"]=num(u.destination.y);v["health"]=num(u.health);v["remaining"]=num(u.remaining);v["total"]=num(u.total);v["moving"]=num(u.moving);Array path;for(int r:u.path)path.push_back(num(r));v["path"]=Json(path);units.push_back(Json(v));}o["units"]=Json(units);
     Array routes;
     for(auto& r:state.routes){
       Object v;
@@ -468,16 +517,16 @@ namespace escalation {
       if(std::floor(v)!=v)throw std::runtime_error("Non-integral save index");
       return int(v);
     };
-    if(integer(o,"version",1,1)!=1)throw std::runtime_error("Unsupported save version");
+    int version=integer(o,"version",1,2);
     int player=world_->find(string(o,"player")),enemy=world_->find(string(o,"enemy"));
     Simulation candidate(*world_);
-    candidate.start(player,Field(integer(o,"focus",0,7)));
+    candidate.start(player,Field(integer(o,"focus",0,7)),version>=2?bool(integer(o,"simple",0,1)):false);
     auto& c=candidate.state;
     if(enemy!=c.enemy)throw std::runtime_error("Save opponent differs from world data");
     c.day=integer(o,"day",0,365*300);
     c.money=bounded(o,"money",0,1e12);
     c.stability=bounded(o,"stability",0,100);
-    c.brigades=bounded(o,"brigades",0,60);
+    c.brigades=bounded(o,"brigades",0,version>=2?120:60);
     c.researchBudget=bounded(o,"budget",0,1);
     c.target=integer(o,"target",-1,int(c.regions.size())-1);
     c.war=integer(o,"war",0,1);
@@ -510,11 +559,13 @@ namespace escalation {
       if(owner!=c.player&&owner!=c.enemy)throw std::runtime_error("Invalid owner");
       c.regions[i].owner=owner;
       c.regions[i].capture=bounded(regions[i],"capture",0,1);
+      c.regions[i].roads=version>=2?integer(regions[i],"roads",0,5):0;
     }
     c.sites.clear();
     auto& sites=asArray(field(o,"sites"));
     if(sites.size()>1000)throw std::runtime_error("Too many sites");
-    for(auto& s:sites)c.sites.push_back({integer(s,"region",0,int(c.regions.size())-1),Facility(integer(s,"type",0,9)),bounded(s,"remaining",0,120),0,bool(integer(s,"enabled",0,1))});
+    for(auto& s:sites){Site site{integer(s,"region",0,int(c.regions.size())-1),Facility(integer(s,"type",0,version>=2?15:9)),bounded(s,"remaining",0,120),0,bool(integer(s,"enabled",0,1))};site.position=version>=2?Point{bounded(s,"x",-720,720),bounded(s,"y",-90,90)}:c.regions[site.region].center;site.destroyed=version>=2?bool(integer(s,"destroyed",0,1)):false;c.sites.push_back(site);}
+    if(version>=2){c.units.clear();auto& units=asArray(field(o,"units"));if(units.size()>1000)throw std::runtime_error("Too many units");for(auto& v:units){Unit u;u.owner=world_->find(string(v,"owner"));if(u.owner!=c.player&&u.owner!=c.enemy)throw std::runtime_error("Invalid unit owner");u.region=integer(v,"region",0,int(c.regions.size())-1);u.target=integer(v,"target",-1,int(c.regions.size())-1);u.sourceSite=integer(v,"source",-1,int(c.sites.size())-1);u.type=UnitType(integer(v,"type",0,8));u.position={bounded(v,"x",-720,720),bounded(v,"y",-90,90)};u.destination={bounded(v,"dx",-720,720),bounded(v,"dy",-90,90)};u.health=bounded(v,"health",0,100);u.remaining=bounded(v,"remaining",0,120);u.total=bounded(v,"total",0,120);u.moving=bool(integer(v,"moving",0,1));for(auto& r:asArray(field(v,"path"))){double n=asNumber(r);if(!std::isfinite(n)||n<0||n>=c.regions.size()||std::floor(n)!=n)throw std::runtime_error("Invalid unit path");u.path.push_back(int(n));}c.units.push_back(u);}}
     c.routes.clear();
     auto& routes=asArray(field(o,"routes"));
     if(routes.size()>2500)throw std::runtime_error("Too many routes");

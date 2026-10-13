@@ -18,7 +18,7 @@ if operation=='create':print('temporary-container')
 if operation=='cp':
     dest=pathlib.Path(args[2]);dest.mkdir(exist_ok=True)
     if os.environ.get('MOCK_INCOMPLETE'):sys.exit(0)
-    for name in ['escalation','escalation_headless','escalation.exe','escalation_headless.exe','data/world.geojson','data/histories.json','README.md','THIRD_PARTY_NOTICES.md']:
+    for name in ['escalation','escalation_headless','escalation.exe','escalation_headless.exe','data/world.geojson','data/histories.json','data/nation-groups.json','data/flags.json','data/flags-atlas.png','data/terrain-height.png','data/assets.json','README.md','THIRD_PARTY_NOTICES.md']:
         p=dest/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text('new-package')
 '''
 

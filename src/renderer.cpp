@@ -35,11 +35,28 @@ namespace escalation {
   static const char* vertexSource=R"(#version 330 core
 layout(location=0) in vec2 position;layout(location=1) in float country;
 uniform vec2 center;uniform float zoom,aspect,offset,layer;uniform int globe;
-out float depth;flat out int id;
-void main(){id=int(country);vec2 p=position+vec2(offset,0);if(globe==1){float lat=radians(p.y),lon=radians(p.x-center.x),tilt=radians(center.y);vec3 v=vec3(cos(lat)*sin(lon),sin(lat),cos(lat)*cos(lon));vec2 yz=mat2(cos(tilt),sin(tilt),-sin(tilt),cos(tilt))*v.yz;depth=yz.y;gl_Position=vec4(v.x/aspect*zoom*layer,yz.x*zoom*layer,-yz.y*layer*0.45,1);}else{depth=1;gl_Position=vec4((p.x-center.x)/180*zoom,(p.y-center.y)/180*aspect*zoom,0,1);}})";
+out float depth;out vec2 geo;flat out int id;
+void main(){geo=position;id=int(country);vec2 p=position+vec2(offset,0);if(globe==1){float lat=radians(p.y),lon=radians(p.x-center.x),tilt=radians(center.y);vec3 v=vec3(cos(lat)*sin(lon),sin(lat),cos(lat)*cos(lon));vec2 yz=mat2(cos(tilt),sin(tilt),-sin(tilt),cos(tilt))*v.yz;depth=yz.y;gl_Position=vec4(v.x/aspect*zoom,yz.x*zoom,-yz.y*layer*0.45,1);}else{depth=1;gl_Position=vec4((p.x-center.x)/180*zoom,(p.y-center.y)/180*aspect*zoom,0,1);}})";
   static const char* fragmentSource=R"(#version 330 core
-in float depth;flat in int id;uniform sampler2D palette;uniform int globe,border;out vec4 color;
-void main(){if(globe==1&&depth<0)discard;vec4 base=texelFetch(palette,ivec2(id%16,id/16),0);if(border==1)base=vec4(base.rgb*1.55,0.65);float light=globe==1?0.55+0.45*sqrt(max(depth,0)):1;color=vec4(base.rgb*light,base.a);})";
+in float depth;in vec2 geo;flat in int id;
+uniform sampler2D palette,heightmap;uniform int globe,border,relief;out vec4 color;
+void main(){
+ if(globe==1&&depth<0)discard;
+ vec4 base=texelFetch(palette,ivec2(id%16,id/16),0);
+ if(relief==1&&id<254&&border==0){
+  vec2 uv=vec2(fract((geo.x+180.0)/360.0),(90.0-geo.y)/180.0),pixel=1.0/vec2(textureSize(heightmap,0));
+  float h=texture(heightmap,uv).r;
+  float dx=texture(heightmap,uv+vec2(pixel.x,0)).r-texture(heightmap,uv-vec2(pixel.x,0)).r;
+  float dy=texture(heightmap,uv+vec2(0,pixel.y)).r-texture(heightmap,uv-vec2(0,pixel.y)).r;
+  float shade=clamp(0.90+dx*3.0-dy*3.5,0.52,1.30);
+  vec3 terrain=mix(vec3(0.16,0.22,0.18),vec3(0.36,0.32,0.24),smoothstep(0.04,0.4,h));
+  terrain=mix(terrain,vec3(0.57,0.60,0.57),smoothstep(0.44,0.83,h));
+  terrain=mix(terrain,vec3(0.62,0.68,0.69),smoothstep(62.0,82.0,abs(geo.y))*0.65);
+  base.rgb=mix(terrain*shade,base.rgb,id>=192?0.35:0.14);
+ }
+ if(border==1)base=vec4(base.rgb*1.65,0.7);
+ float light=globe==1?0.65+0.35*sqrt(max(depth,0)):1.0;color=vec4(base.rgb*light,base.a);
+})";
   static gl::UInt shader(gl::Enum type,const char* source){
     auto s=gl::CreateShader(type);
     gl::ShaderSource(s,1,&source,nullptr);
@@ -72,7 +89,9 @@ void main(){if(globe==1&&depth<0)discard;vec4 base=texelFetch(palette,ivec2(id%1
     if(m.vao)gl::DeleteVertexArrays(1,&m.vao);
     m={};
   }
-  void Renderer::initialise(const World& world){
+  void Renderer::initialise(const World& world,const std::string& data){
+    if(world.countries.size()>192)throw std::runtime_error("Map exceeds the country palette capacity");
+    assets.load(data,world);
     version=reinterpret_cast<const char*>(gl::GetString(gl::VERSION));
     auto vs=shader(gl::VERTEX_SHADER,vertexSource),fs=shader(gl::FRAGMENT_SHADER,fragmentSource);
     program_=gl::CreateProgram();
@@ -97,10 +116,11 @@ void main(){if(globe==1&&depth<0)discard;vec4 base=texelFetch(palette,ivec2(id%1
     auto emit=[&](std::vector<Vertex>& v,Point p,int id){
       v.push_back({float(p.x),float(p.y),float(id)});
     };
-    auto triangle=[&](auto&& self,std::array<Point,3> t,int id,int level)->void{double d[3];for(int i=0;i<3;++i)d[i]=std::hypot(t[i].x-t[(i+1)%3].x,t[i].y-t[(i+1)%3].y);int k=int(std::max_element(d,d+3)-d);if(d[k]>4&&level<10){int next=(k+1)%3,third=(k+2)%3;Point mid{(t[k].x+t[next].x)/2,(t[k].y+t[next].y)/2};self(self,{t[k],mid,t[third]},id,level+1);self(self,{mid,t[next],t[third]},id,level+1);}else for(auto p:t)emit(land,p,id);};
+    auto triangle=[&](auto&& self,std::array<Point,3> t,int id,int level)->void{double d[3];for(int i=0;i<3;++i)d[i]=std::hypot(t[i].x-t[(i+1)%3].x,t[i].y-t[(i+1)%3].y);int k=int(std::max_element(d,d+3)-d);if(d[k]>1.5&&level<12){int next=(k+1)%3,third=(k+2)%3;Point mid{(t[k].x+t[next].x)/2,(t[k].y+t[next].y)/2};self(self,{t[k],mid,t[third]},id,level+1);self(self,{mid,t[next],t[third]},id,level+1);}else for(auto p:t)emit(land,p,id);};
     for(size_t i=0;i<world.countries.size();++i){
       auto& c=world.countries[i];
       for(auto t:c.triangles)triangle(triangle,t,int(i),0);
+      if(world.canonical(int(i))!=int(i))continue;
       for(auto& p:c.polygons)for(auto& ring:p.rings)for(size_t k=0;k<ring.size();++k){
         emit(borders,ring[k],int(i));
         emit(borders,ring[(k+1)%ring.size()],int(i));
@@ -185,9 +205,9 @@ void main(){if(globe==1&&depth<0)discard;vec4 base=texelFetch(palette,ivec2(id%1
     for(size_t i=0;i<world.countries.size();++i){
       float h=float((i*37)%17)/17;
       colors[i]={0.13f+h*0.045f,0.23f+h*0.055f,0.27f+h*0.065f,1};
-      if(int(i)==selectedNation)colors[i]={0.22f,0.58f,0.57f,1};
-      if(int(i)==s.player)colors[i]={0.13f,0.48f,0.42f,1};
-      if(int(i)==s.enemy)colors[i]={0.56f,0.23f,0.20f,1};
+      if(world.canonical(int(i))==selectedNation)colors[i]={0.22f,0.58f,0.57f,1};
+      if(world.canonical(int(i))==s.player)colors[i]={0.13f,0.48f,0.42f,1};
+      if(world.canonical(int(i))==s.enemy)colors[i]={0.56f,0.23f,0.20f,1};
     }
     for(size_t i=0;i<s.regions.size();++i){
       float h=float(i%4)*0.025f;
@@ -202,6 +222,7 @@ void main(){if(globe==1&&depth<0)discard;vec4 base=texelFetch(palette,ivec2(id%1
     gl::BindTexture(gl::TEXTURE_2D,palette_);
     gl::TexSubImage2D(gl::TEXTURE_2D,0,0,0,16,16,gl::RGBA,gl::FLOAT,colors.data());
     gl::UseProgram(program_);
+    gl::ActiveTexture(gl::TEXTURE1);gl::BindTexture(gl::TEXTURE_2D,assets.terrain);gl::Uniform1i(gl::GetUniformLocation(program_,"heightmap"),1);gl::Uniform1i(gl::GetUniformLocation(program_,"relief"),c.terrain);gl::ActiveTexture(gl::TEXTURE0);
     gl::Uniform1i(gl::GetUniformLocation(program_,"palette"),0);
     gl::Uniform2f(gl::GetUniformLocation(program_,"center"),float(c.longitude),float(c.latitude));
     gl::Uniform1f(gl::GetUniformLocation(program_,"zoom"),float(c.zoom));
@@ -228,6 +249,7 @@ void main(){if(globe==1&&depth<0)discard;vec4 base=texelFetch(palette,ivec2(id%1
     gl::Viewport(0,0,fw,fh);
   }
   void Renderer::shutdown(){
+    assets.shutdown();
     for(auto* m:{&land_,&borders_,&ocean_,&grid_,&regions_,&regionBorders_})destroy(*m);
     if(palette_)gl::DeleteTextures(1,&palette_);
     if(program_)gl::DeleteProgram(program_);
