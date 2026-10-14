@@ -127,6 +127,12 @@ void main(){
    float ridgeB=1.0-abs(canopy*2.0-1.0);
    float ridge=(ridgeA-0.63)*0.25+(ridgeB-0.63)*0.12+micro*0.10;
    float snow=max(smoothstep(0.56,0.79,h),smoothstep(64.0,79.0,abs(geo.y)));
+   // Latitude/elevation vegetation transition adds geographic texture between
+   // temperate forest and polar ice without changing coastline geometry.
+   float tundra=smoothstep(52.0,68.0,abs(geo.y))*(1.0-snow)*(1.0-arid);
+   terrain=mix(terrain,mix(vec3(0.290,0.295,0.205),vec3(0.405,0.390,0.275),meso),tundra*0.72);
+   float rockyBands=sin(h*195.0+ridgeA*4.0)*0.012*mountain*detailFade;
+   terrain+=rockyBands*(1.0-snow);
    terrain=mix(terrain,vec3(0.800,0.805,0.750),snow);
    vec3 normal=normalize(vec3(-dx*24.0,dy*24.0,1.0));
    float shade=0.57+0.57*max(0.0,dot(normal,normalize(vec3(-0.65,0.72,0.85))));
