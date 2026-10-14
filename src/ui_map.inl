@@ -160,7 +160,7 @@
       for(size_t n=0;n<s.units.size();++n){const auto& unit=s.units[n];if(unit.health<=0||!unit.deployed||!groundUnit(unit.type))continue;bool visible=false;Point actual=displayedUnit(n),p=camera.project(actual,&visible);if(!visible)continue;
         bool selected=std::find(selectedUnits.begin(),selectedUnits.end(),int(n))!=selectedUnits.end()||selectedUnit==int(n),hovered=hoverUnit==int(n);
         ImU32 color=unit.owner==s.player?IM_COL32(91,174,255,255):IM_COL32(255,135,78,255);if(unit.remaining>0)color=IM_COL32(226,189,115,255);
-        if(showRanges&&(selected||hovered)&&unit.remaining<=0){geographicalRing(draw,actual,sim.unitRangeKm(unit),unit.owner==s.player?attackColor(unit.type):IM_COL32(255,135,78,170));if(camera.zoom>24)label(draw,{p.x,p.y-(unit.moving?51:32)},std::to_string(int(sim.unitRangeKm(unit)))+" km weapons",IM_COL32(250,206,131,235));}
+        if(showRanges&&(selected||hovered)&&unit.remaining<=0){geographicalRing(draw,actual,sim.unitRangeKm(unit),unit.owner==s.player?attackColor(unit.type):IM_COL32(255,135,78,170));}
         if(sim.state.war&&(selected||hovered)&&unit.remaining<=0){
           int target=-1;double nearest=sim.unitRangeKm(unit);
           for(size_t t=0;t<s.units.size();++t){const auto& enemy=s.units[t];if(enemy.owner==unit.owner||enemy.health<=0||!enemy.deployed||!groundUnit(enemy.type)||enemy.remaining>0||!canEngage(unit.type,enemy.type))continue;double d=distanceKm(unit.position,enemy.position);if(d<=nearest){nearest=d;target=int(t);}}

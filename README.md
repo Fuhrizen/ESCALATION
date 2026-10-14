@@ -2,7 +2,7 @@
 
 A native C++17 / OpenGL 3.3 strategy prototype about building a nation before committing it to war. Inspired by the conventional/nuclear escalation of **ICBM: Escalation** and the map-led national management of **State of Command**, with original code and presentation.
 
-Version 0.6.0 focuses on **readable command, deliberate combat pacing and manufacture-before-placement**. Units use shared kilometre-based capabilities; research and construction are controlled by a weight slider and completion estimates. Unit and building inspection uses paired bottom-right capability and selection boxes. Completed units and buildings appear in the permanent icon rail; circular controls open dedicated pages. Major roads, decorative rivers, proportional typography and original vector icons are bundled offline.
+Version 0.6.1 focuses on **readable command, deliberate combat pacing and manufacture-before-placement**. Units use shared kilometre-based capabilities; research and construction are controlled by a weight slider and completion estimates. Unit and building inspection uses paired bottom-right capability and selection boxes. Completed units and buildings appear in the permanent icon rail; circular controls open dedicated pages. Major roads, decorative rivers, proportional typography and original vector icons are bundled offline.
 
 ![Native map and national command](docs/map.png)
 
@@ -156,3 +156,7 @@ The approved Concept A layout replaces the bottom bar and wide construction draw
 Research has genuine multi-level forks. Locked cards, connections, search results and details are hidden until all prerequisites complete. Revealed nodes keep stable positions. Unit and building capability boxes show simulation-derived effects, acquired equipment and current stats. MANPADS equipment can be researched, but anti-air targeting remains pending the later aircraft system.
 
 Air/naval production, unit combat and sea transport have been removed from active gameplay. Strategic missiles and nuclear deterrence remain. Version-6 migration retires previous air/naval assets and research, keeps completed ground/strategic research and restores necessary prerequisite ancestry. Legacy numeric IDs remain reserved solely to read older saves. Manufactured units remain off-map until deployed and cannot move, fight or capture cities while in inventory.
+
+### Layout corrections (0.6.1)
+
+Management and research pages reserve a shared navigation-safe gutter. Fabrication uses the full page with no popup border or rounded frame; its card grid retains a minimum readable cell width. The ready inventory rail has no background or full-height border, and quantity badges stay inside their tiles. Unit range values remain in inspection beside the translucent map circle; the redundant floating weapon-range label is removed. All native screenshots have been regenerated for this version.

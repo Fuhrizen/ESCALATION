@@ -55,3 +55,7 @@ One consolidated native build, tactical queue/save checks and native input integ
 ## 0.6.0 approved interface integration
 
 Focused simulation, tactical and native-input suites passed. Coverage includes multi-level branches, hidden prerequisites, actual infantry damage/protection/medicine, retired air/naval production and transport, ready-unit inactivity and deployment, version-5 migration/version-6 inventory roundtrip, and overlay/page input interception. Native renders at 1440×900/100% and 1280×720/125% were reviewed. The compact header was increased to avoid clipping, capability effects wrap, and the research canvas keeps a readable text floor with panning. No broad sanitizer or platform rebuild sweep was repeated; hosted major-release packaging is unchanged.
+
+## 0.6.1 layout correction
+
+The existing native-input suite passed; native renders verify that the shared page gutter clears both navigation columns. Native rendering at 1440×900/100% and 1280×720/125% covers full-page fabrication, intact navigation buttons, borderless inventory tiles, and wrapped grid content. All fourteen documented screenshots are generated from this patch. No simulation or balance changes required a repeated core/combat sweep.

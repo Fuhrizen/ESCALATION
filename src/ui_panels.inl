@@ -8,7 +8,7 @@
     heading("PRODUCTION");allocation();ImGui::TextColored(muted,"Queue units and installations. Completed items appear in the ready rail.");
     if(ImGui::BeginTabBar("Production sections")){
       if(ImGui::BeginTabItem("Catalog")){
-        ImGui::BeginChild("Production catalog",{0,0});heading("INSTALLATIONS");int columns=std::max(1,int(ImGui::GetContentRegionAvail().x/(250.f*uiScale)));
+        ImGui::BeginChild("Production catalog",{0,0});heading("INSTALLATIONS");int columns=std::max(1,int(ImGui::GetContentRegionAvail().x/(280.f*uiScale)));
         if(ImGui::BeginTable("Installation catalog",columns,ImGuiTableFlags_SizingStretchSame|ImGuiTableFlags_PadOuterX)){
           const int types[]={10,9,12,6,4,7,14};for(int id:types){ImGui::TableNextColumn();ImGui::PushID(id);auto p=ImGui::GetCursorScreenPos();command_icons::icon(ImGui::GetWindowDrawList(),{p.x+18.f*uiScale,p.y+18.f*uiScale},30.f*uiScale,20+id,IM_COL32(220,237,255,255));ImGui::Dummy({44.f*uiScale,40.f*uiScale});ImGui::SameLine();ImGui::TextWrapped("%s",facilityNames[id]);auto reason=sim.buildingQueueReason(Facility(id));ImGui::TextColored(muted,"%s fabrication",durationText(sim.buildingETA(Facility(id))).c_str());if(button("Queue installation",reason.empty())){sim.queueBuilding(Facility(id));notice("Installation fabrication queued");}tooltip(reason);ImGui::Separator();ImGui::PopID();}ImGui::EndTable();}
         heading("UNIT MANUFACTURING");bool sites=false;for(size_t i=0;i<sim.state.sites.size();++i){auto& site=sim.state.sites[i];if(sim.state.regions[site.region].owner!=sim.state.player||!productiveSite(site))continue;sites=true;ImGui::PushID(int(i)+100);if(ImGui::CollapsingHeader((std::string(facilityNames[int(site.type)])+" · sector "+std::to_string(site.region+1)).c_str()))production(int(i));ImGui::PopID();}if(!sites)wrapped("Place an Army Base, Arms Plant or Missile Site to manufacture ground formations.");ImGui::EndChild();ImGui::EndTabItem();}
@@ -72,6 +72,12 @@
     heading("STRATEGIC WEAPONS");ImGui::Text("Warheads: %.0f",sim.state.stock[6]);if(button("Queue warhead",sim.state.levels[4]>=4&&sim.state.levels[6]>=4)&&!sim.produceWarhead())notice("Requires an operational factory and laboratory; stock limit 20");if(sim.state.warheadsQueued>0)ImGui::Text("%d warheads queued",sim.state.warheadsQueued);
   }
   void sidePanel(float w,float h){
-    if(panel==None||panel==Research)return;float x=readyRailWidth();ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.018f,.04f,.075f,1));fixedWindow("Management page",x,hudHeight(),w-x,h-hudHeight());
-    if(button("Return to map"))panel=None;ImGui::BeginChild("Management page content",{0,-navigationReserveHeight()});switch(panel){case Build:buildPanel();break;case Forces:forcesPanel();break;case Log:heading("COMMAND LOG");for(auto& event:sim.state.events)wrapped(event);break;default:break;}ImGui::EndChild();ImGui::End();ImGui::PopStyleColor();
+    if(panel==None||panel==Research)return;float x=pageSafeLeft();
+    ImGui::GetBackgroundDrawList()->AddRectFilled({0,hudHeight()},{w,h},IM_COL32(5,10,19,255));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.018f,.04f,.075f,1));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding,0.f);ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0.f);
+    ImGui::SetNextWindowPos({x,hudHeight()});ImGui::SetNextWindowSize({w-x,h-hudHeight()});
+    ImGui::Begin("Management page",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoBringToFrontOnFocus|ImGuiWindowFlags_NoFocusOnAppearing);
+    ImGui::PopStyleVar(2);
+    if(button("Return to map"))panel=None;ImGui::BeginChild("Management page content",{0,0});switch(panel){case Build:buildPanel();break;case Forces:forcesPanel();break;case Log:heading("COMMAND LOG");for(auto& event:sim.state.events)wrapped(event);break;default:break;}ImGui::EndChild();ImGui::End();ImGui::PopStyleColor();
   }

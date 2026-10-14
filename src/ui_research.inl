@@ -41,7 +41,7 @@
   void researchTree(float w,float h){
     auto& s=sim.state;
     static char search[96]{};
-    const float rail=readyRailWidth(),top=hudHeight();
+    const float rail=pageSafeLeft(),top=hudHeight();
     const float nav=std::clamp(w*.148f,190.0f*uiScale,246.0f*uiScale);
     const ImU32 cyan=IM_COL32(43,188,246,255), pale=IM_COL32(217,234,247,255),soft=IM_COL32(134,176,204,255),green=IM_COL32(78,216,183,255);
     const int categories[]={0,4,1,2,5,6,7};

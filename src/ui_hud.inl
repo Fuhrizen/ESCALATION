@@ -1,12 +1,13 @@
 // Included inside App; approved compact command header and permanent ready rail.
   float hudHeight() const{return (ImGui::GetIO().DisplaySize.x/uiScale<1120.f?104.f:56.f)*uiScale;}
   float commandHeight() const{return 0.f;}
-  float managementWidth() const{return readyRailWidth();}
+  float pageSafeLeft() const{return std::max(readyRailWidth(),190.f*uiScale);}
+  float managementWidth() const{return pageSafeLeft();}
   float inspectorWidth(float w) const{return std::min((w/uiScale<900.f?420.f:780.f)*uiScale,w-readyRailWidth()-24.f*uiScale);}
   float inspectorHeight(float h) const{return std::min(260.f*uiScale,h-hudHeight()-20.f*uiScale);}
   float navigationReserveHeight() const{return 198.f*uiScale;}
   int readyItemKinds() const {int count=0;for(int id=0;id<16;++id)if(sim.state.buildingInventory[id]>0)++count;for(int id=0;id<9;++id)if(sim.readyUnitCount(UnitType(id))>0)++count;return count;}
-  float readyRailWidth(float h) const {int rows=std::max(1,int((h-hudHeight()-navigationReserveHeight())/(64.f*uiScale)));return 64.f*uiScale*std::max(1,(readyItemKinds()+rows-1)/rows);}
+  float readyRailWidth(float h) const {int rows=std::max(1,int((h-hudHeight()-navigationReserveHeight()-16.f*uiScale)/(64.f*uiScale)));return 64.f*uiScale*std::max(1,(readyItemKinds()+rows-1)/rows);}
   float readyRailWidth() const{return readyRailWidth(ImGui::GetIO().DisplaySize.y);}
   bool mapOverlayHit(Point p,float w,float h) const{
     if(p.y<hudHeight())return true;
@@ -40,10 +41,13 @@
     tooltip("Drag to allocate national capacity between research and production. Arrow keys adjust by 1%.");ImGui::PopID();
   }
   void readyRail(float h){
-    float s=uiScale,cell=64.f*s;int rows=std::max(1,int((h-hudHeight()-navigationReserveHeight())/cell));
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{8.f*s,8.f*s});ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.018f,.04f,.075f,.08f));
-    fixedWindow("Ready rail",0,hudHeight(),readyRailWidth(h),h-hudHeight());
-    int index=0;auto item=[&](int kind,int count,const char* name,bool building,int id){int col=index/rows,row=index%rows;++index;ImGui::PushID(kind+100);ImGui::SetCursorPos({8.f*s+col*64.f*s,8.f*s+row*cell});auto p=ImGui::GetCursorScreenPos();bool active=building?construction==id:readyUnitPlacement==id;ImGui::InvisibleButton("Deploy ready item",{56.f*s,56.f*s});bool hover=ImGui::IsItemHovered();auto*d=ImGui::GetWindowDrawList();d->AddRectFilled(p,{p.x+56.f*s,p.y+56.f*s},active?IM_COL32(12,65,118,255):IM_COL32(4,22,44,255),4.f*s);d->AddRect(p,{p.x+56.f*s,p.y+56.f*s},active||hover?IM_COL32(72,167,255,255):IM_COL32(90,121,161,255),4.f*s,0,active?3.f:1.4f);command_icons::icon(d,{p.x+28.f*s,p.y+29.f*s},34.f*s,kind,IM_COL32(226,239,255,255));d->AddCircleFilled({p.x+49.f*s,p.y+5.f*s},11.f*s,IM_COL32(44,143,249,255));auto qty=std::to_string(count);auto sz=ImGui::CalcTextSize(qty.c_str());d->AddText({p.x+49.f*s-sz.x*.5f,p.y+5.f*s-sz.y*.5f},IM_COL32(255,255,255,255),qty.c_str());if(hover){ImGui::BeginTooltip();ImGui::Text("%s · %d ready",name,count);ImGui::TextUnformatted(building?"Click to place on controlled land":"Click to deploy on controlled land");ImGui::EndTooltip();}if(ImGui::IsItemClicked()){construction=building?id:-1;readyUnitPlacement=building?-1:id;panel=None;commandMode=false;notice(std::string("Choose controlled land to ")+(building?"place ":"deploy ")+name);}ImGui::PopID();};
+    float s=uiScale,cell=64.f*s;int rows=std::max(1,int((h-hudHeight()-navigationReserveHeight()-16.f*s)/cell));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.018f,.04f,.075f,.08f));
+    ImGui::SetNextWindowPos({0,hudHeight()});ImGui::SetNextWindowSize({readyRailWidth(h),h-hudHeight()});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0.f);
+    ImGui::Begin("Ready rail",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse|ImGuiWindowFlags_NoBringToFrontOnFocus);
+    ImGui::PopStyleVar();
+    int index=0;auto item=[&](int kind,int count,const char* name,bool building,int id){int col=index/rows,row=index%rows;++index;ImGui::PushID(kind+100);ImGui::SetCursorPos({4.f*s+col*64.f*s,12.f*s+row*cell});auto p=ImGui::GetCursorScreenPos();bool active=building?construction==id:readyUnitPlacement==id;ImGui::InvisibleButton("Deploy ready item",{56.f*s,56.f*s});bool hover=ImGui::IsItemHovered();auto*d=ImGui::GetWindowDrawList();d->AddRectFilled(p,{p.x+56.f*s,p.y+56.f*s},active?IM_COL32(12,65,118,255):IM_COL32(4,22,44,255),4.f*s);d->AddRect(p,{p.x+56.f*s,p.y+56.f*s},active||hover?IM_COL32(72,167,255,255):IM_COL32(90,121,161,255),4.f*s,0,active?3.f:1.4f);command_icons::icon(d,{p.x+28.f*s,p.y+29.f*s},34.f*s,kind,IM_COL32(226,239,255,255));auto qty=std::to_string(count);auto sz=ImGui::CalcTextSize(qty.c_str());float badge=std::max(11.f*s,sz.x*.5f+3.f*s);ImVec2 counter{p.x+56.f*s-badge,p.y+std::max(5.f*s,badge-8.f*s)};d->AddCircleFilled(counter,badge,IM_COL32(44,143,249,255));d->AddText({counter.x-sz.x*.5f,counter.y-sz.y*.5f},IM_COL32(255,255,255,255),qty.c_str());if(hover){ImGui::BeginTooltip();ImGui::Text("%s · %d ready",name,count);ImGui::TextUnformatted(building?"Click to place on controlled land":"Click to deploy on controlled land");ImGui::EndTooltip();}if(ImGui::IsItemClicked()){construction=building?id:-1;readyUnitPlacement=building?-1:id;panel=None;commandMode=false;notice(std::string("Choose controlled land to ")+(building?"place ":"deploy ")+name);}ImGui::PopID();};
     for(int id=0;id<9;++id){int count=sim.readyUnitCount(UnitType(id));if(count)item(id,count,unitNames[id],false,id);}for(int id=0;id<16;++id)if(sim.state.buildingInventory[id]>0)item(20+id,sim.state.buildingInventory[id],facilityNames[id],true,id);
     ImGui::End();ImGui::PopStyleColor();ImGui::PopStyleVar();
   }
