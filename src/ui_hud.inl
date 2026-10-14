@@ -60,7 +60,7 @@
     for(int i=0;i<4;++i){ImGui::PushID(i);ImGui::SetCursorPos({i*49.f*s,120*s});auto p=ImGui::GetCursorScreenPos();ImGui::InvisibleButton(names[i],{46*s,46*s});bool hot=ImGui::IsItemHovered(),active=panel==pages[i];ImVec2 c{p.x+23*s,p.y+23*s};ImVec2 q[6];for(int j=0;j<6;++j){float a=float(j)*3.14159265f/3.f;q[j]={c.x+23*s*std::cos(a),c.y+23*s*std::sin(a)};}d->AddConvexPolyFilled(q,6,IM_COL32(5,27,42,232));d->AddPolyline(q,6,active||hot?IM_COL32(71,224,244,255):IM_COL32(46,119,143,210),ImDrawFlags_Closed,1.5f*s);command_icons::icon(d,c,26*s,icons[i],IM_COL32(77,205,227,255));tooltip(names[i]);if(ImGui::IsItemClicked())toggle(pages[i]);ImGui::PopID();}
     ImVec2 c{w-83*s,h-86*s};d->AddCircleFilled(c,74*s,IM_COL32(2,14,27,238),64);d->AddCircle(c,73*s,IM_COL32(60,153,182,220),64,2*s);d->AddCircle(c,53*s,IM_COL32(12,102,145,240),64,3*s);
     for(int j=0;j<32;++j){float a=3.14159265f+(j/31.f)*3.14159265f;ImVec2 a1{c.x+60*s*std::cos(a),c.y+60*s*std::sin(a)},a2{c.x+68*s*std::cos(a),c.y+68*s*std::sin(a)};d->AddLine(a1,a2,j<8+int(std::log2(speed))*8?IM_COL32(13,159,216,255):IM_COL32(25,65,85,210),3*s);}
-    ImGui::SetCursorScreenPos({c.x-42*s,c.y-40*s});ImGui::InvisibleButton("Pause / play",{84*s,80*s});if(ImGui::IsItemClicked())paused=!paused;tooltip(paused?"Resume simulation [Space]":"Pause simulation [Space]");
+    ImGui::SetCursorScreenPos({c.x-42*s,c.y-40*s});ImGui::InvisibleButton("Pause / play",{84*s,80*s});if(ImGui::IsItemClicked()){paused=!paused;audio.play(SoundCue::Click);}tooltip(paused?"Resume simulation [Space]":"Pause simulation [Space]");
     if(paused)d->AddTriangleFilled({c.x-12*s,c.y-24*s},{c.x-12*s,c.y+24*s},{c.x+25*s,c.y},IM_COL32(120,228,255,255));else{d->AddRectFilled({c.x-16*s,c.y-22*s},{c.x-5*s,c.y+22*s},IM_COL32(120,228,255,255));d->AddRectFilled({c.x+5*s,c.y-22*s},{c.x+16*s,c.y+22*s},IM_COL32(120,228,255,255));}
     ImGui::SetCursorScreenPos({c.x-105*s,c.y-62*s});if(ImGui::Button("+",{25*s,25*s}))speed=std::min(8,speed*2);ImGui::SetCursorScreenPos({c.x-105*s,c.y-32*s});if(ImGui::Button("-",{25*s,25*s}))speed=std::max(1,speed/2);ImGui::SetCursorScreenPos({c.x-111*s,c.y+7*s});ImGui::Text("%dx",speed);
     ImGui::End();ImGui::PopStyleVar(2);
@@ -83,6 +83,11 @@
     if(ImGui::BeginPopupModal("Command options",nullptr,ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoResize)){
       heading("COMMAND PAUSED");
       if(ImGui::Button("Resume command",{-1,36})){pauseOpen=false;paused=wasPaused;saveSettings();ImGui::CloseCurrentPopup();}
+      heading("AUDIO");
+      if(ImGui::Checkbox("Mute sound effects",&audioMuted))audio.setMuted(audioMuted);
+      float effectsPercent=audioVolume*100.f;ImGui::BeginDisabled(audioMuted);
+      if(ImGui::SliderFloat("Effects volume",&effectsPercent,0.f,100.f,"%.0f%%")){audioVolume=effectsPercent/100.f;audio.setVolume(audioVolume);}
+      ImGui::EndDisabled();if(audioStarted&&!audio.available())ImGui::TextColored(muted,"Sound device unavailable.");
       heading("CAMERA & DISPLAY");
       ImGui::SliderFloat("Keyboard pan speed",&panSpeed,.5f,5.f,"%.1fx");
       ImGui::SliderFloat("Drag speed",&dragSpeed,.5f,3.f,"%.1fx");

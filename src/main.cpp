@@ -7,6 +7,7 @@
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
 #include "escalation/renderer.hpp"
+#include "escalation/audio.hpp"
 #include "escalation/headless_context.hpp"
 #include "escalation/json.hpp"
 #include <algorithm>
@@ -107,6 +108,9 @@ struct App {
   World world;
   Simulation sim;
   Renderer renderer;
+  Audio audio;
+  float audioVolume=.65f;
+  bool audioMuted=false,audioStarted=false;
   Camera camera;
   CameraMotion cameraMotion;
   std::vector<Point> previousUnitPositions;
@@ -143,20 +147,28 @@ struct App {
       auto value=[&](const char* key,float fallback){return j.contains(key)&&j.get(key).is<double>()?float(j.get(key).get<double>()):fallback;};
       panSpeed=std::clamp(value("panSpeed",panSpeed),.5f,5.f);dragSpeed=std::clamp(value("dragSpeed",dragSpeed),.5f,3.f);zoomSensitivity=std::clamp(value("zoomSensitivity",zoomSensitivity),.5f,3.f);uiScale=std::clamp(value("uiScale",uiScale),.85f,1.4f);
       auto boolean=[&](const char* key,bool fallback){return j.contains(key)&&j.get(key).is<bool>()?j.get(key).get<bool>():fallback;};
+      audioVolume=std::clamp(value("audioVolume",audioVolume),0.f,1.f);audioMuted=boolean("audioMuted",false);
       autoUiScale=boolean("autoUiScale",!j.contains("uiScale"));showRanges=boolean("showRanges",true);showCities=boolean("showCities",true);showRoads=boolean("showRoads",true);showBorders=boolean("showBorders",true);showRivers=boolean("showRivers",true);showPressure=boolean("showPressure",true);camera.terrain=boolean("terrain",true);camera.globe=boolean("globe",true);
     }catch(const std::exception&){}
   }
   void saveSettings(){
     try{std::filesystem::create_directories(saves);Object j;
       j["panSpeed"]=num(panSpeed);j["dragSpeed"]=num(dragSpeed);j["zoomSensitivity"]=num(zoomSensitivity);j["uiScale"]=num(uiScale);j["autoUiScale"]=Json(autoUiScale);
+      j["audioVolume"]=num(audioVolume);j["audioMuted"]=Json(audioMuted);
       j["showRanges"]=Json(showRanges);j["showCities"]=Json(showCities);j["showRoads"]=Json(showRoads);j["showBorders"]=Json(showBorders);j["showRivers"]=Json(showRivers);j["showPressure"]=Json(showPressure);j["terrain"]=Json(camera.terrain);j["globe"]=Json(camera.globe);
       std::ofstream f(saves/"settings.json");f<<Json(j).serialize(true);
     }catch(const std::exception& e){notice(e.what());}
   }
   void cancelGestures(){leftStarted=rightStarted=rightDragged=false;panButton=-1;leftGesture.cancel();rightGesture.cancel();cameraMotion.reset();}
-  void openPause(){wasPaused=paused;paused=true;pauseOpen=true;cancelGestures();}
+  void openPause(){audio.play(SoundCue::Click);wasPaused=paused;paused=true;pauseOpen=true;cancelGestures();}
   void notice(const std::string& text){
     message=text;noticeRemaining=6;
+    std::string lower=text;std::transform(lower.begin(),lower.end(),lower.begin(),[](unsigned char c){return char(std::tolower(c));});
+    auto has=[&](const char* part){return lower.find(part)!=std::string::npos;};
+    if(has("blocked")||has("unavailable")||has("outside")||has("requires")||has("invalid")||has("no reachable"))audio.play(SoundCue::Invalid);
+    else if(has("strike launched"))audio.play(SoundCue::Launch);
+    else if(has("orders issued")||has("orders queued")||has("order issued")||has("stopped"))audio.play(SoundCue::Order);
+    else if(has("queued")||has("deployed")||has("placed")||has("saved")||has("restored"))audio.play(SoundCue::Success);
   }
   void clearSelection(){
     selectedRegion=selectedSite=selectedSettlement=selectedWorldCity=selectedUnit=construction=readyUnitPlacement=-1;
@@ -237,6 +249,7 @@ struct App {
     notice("Select units or land. Construction [B], research [R], Space resumes.");
   }
   void toggle(Panel wanted){
+    audio.play(SoundCue::Click);
     cancelGestures();construction=readyUnitPlacement=-1;commandMode=false;attackMode=0;
     panel=panel==wanted?None:wanted;
     if(panel==Research)treeFocus=true;
@@ -395,7 +408,7 @@ struct App {
         if(ImGui::IsKeyPressed(ImGuiKey_X,false)){for(int id:selectedUnits)sim.holdUnit(size_t(id));notice("Selected formations stopped");}
       }
       if(screen==Game){
-        if(ImGui::IsKeyPressed(ImGuiKey_Space))paused=!paused;
+        if(ImGui::IsKeyPressed(ImGuiKey_Space)){paused=!paused;audio.play(SoundCue::Click);}
         if(ImGui::IsKeyPressed(ImGuiKey_B))toggle(Build);
         if(ImGui::IsKeyPressed(ImGuiKey_R))toggle(Research);
         if(ImGui::IsKeyPressed(ImGuiKey_U))toggle(Forces);
@@ -568,6 +581,19 @@ struct App {
     }
     pauseMenu(w,h);
   }
+  void tickWithAudio(){
+    const size_t researchBefore=sim.state.research.size(),buildingsBefore=sim.state.buildingQueue.size();
+    std::vector<size_t> pending;for(size_t i=0;i<sim.state.units.size();++i){const auto& unit=sim.state.units[i];if(unit.owner==sim.state.player&&unit.health>0&&unit.remaining>0)pending.push_back(i);}
+    sim.tick();
+    bool complete=sim.state.research.size()<researchBefore||sim.state.buildingQueue.size()<buildingsBefore;
+    for(size_t i:pending)if(i<sim.state.units.size()&&sim.state.units[i].remaining<=0)complete=true;
+    if(complete)audio.play(SoundCue::Complete);
+    bool launch=false,impact=false;for(const auto& shot:sim.state.engagements){
+      launch|=shot.damage>0&&(shot.ballistic||shot.guided)&&std::abs(shot.remaining-shot.total)<.00001;
+      impact|=shot.damage>0&&std::abs(shot.impactSeconds-(shot.nuclear?3.0:1.5))<.00001;
+    }
+    if(launch)audio.play(SoundCue::Launch);if(impact)audio.play(SoundCue::Impact);
+  }
   void frame(float w,float h,double dt){
     noticeRemaining=std::max(0.0,noticeRemaining-dt);
     if(autoUiScale)uiScale=effectiveUiScale(w,h);
@@ -585,7 +611,9 @@ struct App {
     }
     else{
       if(screen==Game)sim.refreshRates();
+      const std::array<int,5> selectionBefore={selectedUnit,selectedSite,selectedRegion,selectedSettlement,selectedWorldCity};
       controls(dt);
+      if(selectionBefore!=std::array<int,5>{selectedUnit,selectedSite,selectedRegion,selectedSettlement,selectedWorldCity})audio.play(SoundCue::Select);
       mapLabels();
       if(screen==Select)selection(w,h);
       else game(w,h);
@@ -600,7 +628,7 @@ struct App {
         }
         previousUnitPositions.clear();
         for(auto& unit:sim.state.units)previousUnitPositions.push_back(unit.position);
-        sim.tick();
+        tickWithAudio();
         accumulator-=0.25;
         if(sim.state.day-sim.state.lastAutosave>=365){
           sim.state.lastAutosave=sim.state.day;
@@ -663,6 +691,7 @@ int main(int argc,char** argv){
     auto data=dataDirectory(argv[0]);
     world.load(data+"/world.geojson",data+"/histories.json");
     App app(std::move(world),smoke?shots:userData());
+    if(!smoke){app.audio.setVolume(app.audioVolume);app.audio.setMuted(app.audioMuted);app.audioStarted=app.audio.start();}
     app.renderer.initialise(app.world,data);
     if(smoke&&argc>5){app.autoUiScale=false;app.uiScale=std::clamp(std::stof(argv[5]),.85f,1.4f);}
     std::cout<<"OpenGL "<<app.renderer.version<<" | "<<app.world.countries.size()<<" countries | "<<app.renderer.landVertices<<" cached vertices\n";
@@ -788,6 +817,7 @@ int main(int argc,char** argv){
     }
     if(!smoke&&app.sim.state.player>=0)app.save(true);
     app.saveSettings();
+    app.audio.shutdown();
     app.renderer.shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
