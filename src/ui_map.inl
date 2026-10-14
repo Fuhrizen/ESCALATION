@@ -61,26 +61,81 @@
       }
     }
   }
+  struct FrontSample {Point screen,geo;double value=0,pressure=0;int side=0;};
+  std::vector<FrontSample> frontSamples;
+  size_t frontFingerprint=0;
+  int frontColumns=0,frontRows=0;
+  static ImU32 controllingColor(bool player,int alpha=235){
+    return player?IM_COL32(60,194,188,alpha):IM_COL32(244,131,78,alpha);
+  }
   void pressureOverlay(ImDrawList* draw){
     if(!showPressure||!sim.state.war||camera.zoom<3)return;
-    const float cell=16;
-    int columns=int(std::ceil(camera.width/cell))+1,rows=int(std::ceil(camera.height/cell))+1;
-    struct Sample {Point screen;double value=0;bool land=false;};
-    std::vector<Sample> samples(size_t(columns)*rows);
-    auto color=[](double value){int a=int(std::clamp(std::abs(value)*42.0,0.0,42.0));return value>=0?IM_COL32(70,155,239,a):IM_COL32(244,131,78,a);};
-    for(int y=0;y<rows;++y)for(int x=0;x<columns;++x){
-      auto& s=samples[size_t(y)*columns+x];s.screen={camera.x+x*cell,camera.y+y*cell};auto p=camera.unproject(s.screen);if(!p)continue;
-      s.value=sim.frontlinePressure(*p);
-      if(std::abs(s.value)>.001){s.land=sim.regionAt(*p)>=0;if(!s.land)s.value=0;}
+    // A signed ownership field has a boundary even where neither army is near.
+    // Pressure bends that boundary; it does not replace it with isolated blobs.
+    constexpr float cell=10;
+    const int columns=int(std::ceil(camera.width/cell))+1,rows=int(std::ceil(camera.height/cell))+1;
+    size_t fingerprint=0;auto hash=[&](double v){fingerprint^=std::hash<double>{}(v)+0x9e3779b9+(fingerprint<<6)+(fingerprint>>2);};
+    for(double v:{camera.longitude,camera.latitude,camera.zoom,double(camera.globe),double(camera.x),double(camera.y),double(camera.width),double(camera.height)})hash(v);
+    for(const auto& r:sim.state.regions)hash(r.owner);
+    // Refresh pressure on simulation ticks, avoiding expensive polygon picks per frame.
+    hash(std::floor(ImGui::GetTime()*8));
+    if(fingerprint!=frontFingerprint||frontColumns!=columns||frontRows!=rows){
+      frontFingerprint=fingerprint;frontColumns=columns;frontRows=rows;
+      frontSamples.assign(size_t(columns)*rows,{});
+      const double infinity=columns+rows+10;
+      std::vector<double> distance[2];for(auto& d:distance)d.assign(frontSamples.size(),infinity);
+      for(int y=0;y<rows;++y)for(int x=0;x<columns;++x){
+        size_t id=size_t(y)*columns+x;auto& sample=frontSamples[id];sample.screen={camera.x+x*cell,camera.y+y*cell};
+        auto geo=camera.unproject(sample.screen);if(!geo)continue;sample.geo=*geo;int region=sim.regionAt(*geo);if(region<0)continue;
+        sample.side=sim.state.regions[region].owner==sim.state.player?1:-1;
+        sample.pressure=sim.frontlinePressure(*geo);
+        distance[sample.side>0?0:1][id]=0;
+      }
+      // Two chamfer sweeps yield distance to each army's territory. Distances
+      // interpolate across cell edges, so zeros cannot disappear at a raster gap.
+      for(auto& d:distance){
+        for(int y=0;y<rows;++y)for(int x=0;x<columns;++x){size_t id=size_t(y)*columns+x;
+          if(x)d[id]=std::min(d[id],d[id-1]+1);if(y)d[id]=std::min(d[id],d[id-columns]+1);
+          if(x&&y)d[id]=std::min(d[id],d[id-columns-1]+1.41421356237);
+          if(x+1<columns&&y)d[id]=std::min(d[id],d[id-columns+1]+1.41421356237);
+        }
+        for(int y=rows-1;y>=0;--y)for(int x=columns-1;x>=0;--x){size_t id=size_t(y)*columns+x;
+          if(x+1<columns)d[id]=std::min(d[id],d[id+1]+1);if(y+1<rows)d[id]=std::min(d[id],d[id+columns]+1);
+          if(x+1<columns&&y+1<rows)d[id]=std::min(d[id],d[id+columns+1]+1.41421356237);
+          if(x&&y+1<rows)d[id]=std::min(d[id],d[id+columns-1]+1.41421356237);
+        }
+      }
+      for(size_t id=0;id<frontSamples.size();++id){auto& sample=frontSamples[id];if(!sample.side)continue;
+        Point north=camera.project({sample.geo.x,std::min(89.9,sample.geo.y+.27)});
+        double reach=std::hypot(north.x-sample.screen.x,north.y-sample.screen.y);
+        sample.value=(distance[1][id]-distance[0][id])*cell+sample.pressure*reach*1.25;
+      }
+      // A small area filter removes stair steps without displacing the front by
+      // more than one cell. Water never contributes an artificial neutral value.
+      auto raw=frontSamples;
+      for(int y=1;y<rows-1;++y)for(int x=1;x<columns-1;++x){auto& sample=frontSamples[size_t(y)*columns+x];if(!sample.side)continue;double sum=sample.value*4,weight=4;
+        for(int dy=-1;dy<=1;++dy)for(int dx=-1;dx<=1;++dx){if(!dx&&!dy)continue;const auto& n=raw[size_t(y+dy)*columns+x+dx];if(n.side){sum+=n.value;weight+=1;}}sample.value=sum/weight;
+      }
     }
-    for(int y=0;y<rows-1;++y)for(int x=0;x<columns-1;++x){
-      const Sample* c[]={&samples[size_t(y)*columns+x],&samples[size_t(y)*columns+x+1],&samples[size_t(y+1)*columns+x+1],&samples[size_t(y+1)*columns+x]};
-      if(!c[0]->land||!c[1]->land||!c[2]->land||!c[3]->land)continue;
-      draw->AddRectFilledMultiColor(vec(c[0]->screen),vec(c[2]->screen),color(c[0]->value),color(c[1]->value),color(c[2]->value),color(c[3]->value));
-      std::vector<Point> crossings;
-      for(int e=0;e<4;++e){const auto& a=*c[e];const auto& b=*c[(e+1)%4];if(a.value*b.value>=0)continue;double t=a.value/(a.value-b.value);crossings.push_back({a.screen.x+(b.screen.x-a.screen.x)*t,a.screen.y+(b.screen.y-a.screen.y)*t});}
-      for(size_t n=1;n<crossings.size();n+=2)draw->AddLine(vec(crossings[n-1]),vec(crossings[n]),IM_COL32(247,202,125,210),1.8f);
-    }
+    int stroke=0;
+    auto segment=[&](const FrontSample& a,const FrontSample& b,const FrontSample& c){
+      const FrontSample* triangle[]={&a,&b,&c};std::vector<Point> crossings;
+      for(int e=0;e<3;++e){const auto& from=*triangle[e];const auto& to=*triangle[(e+1)%3];if(!from.side||!to.side||(from.value>=0)==(to.value>=0))continue;
+        double t=from.value/(from.value-to.value);crossings.push_back({from.screen.x+(to.screen.x-from.screen.x)*t,from.screen.y+(to.screen.y-from.screen.y)*t});}
+      if(crossings.size()!=2)return;Point p=crossings[0],q=crossings[1],mid{(p.x+q.x)*.5,(p.y+q.y)*.5};
+      auto geo=camera.unproject(mid);if(!geo||sim.regionAt(*geo)<0)return;
+      double length=std::hypot(q.x-p.x,q.y-p.y);if(length<.05)return;
+      double nx=-(q.y-p.y)/length,ny=(q.x-p.x)/length;
+      // Orient the positive side using the ownership field inside this triangle.
+      const FrontSample* positive=a.value>=0?&a:b.value>=0?&b:&c;
+      if((positive->screen.x-mid.x)*nx+(positive->screen.y-mid.y)*ny<0){nx=-nx;ny=-ny;}
+      draw->AddLine(vec(p),vec(q),IM_COL32(5,17,24,215),7.5f);
+      for(int side:{-1,1}){ImU32 color=controllingColor(side>0);Point offset{nx*side*1.7,ny*side*1.7};
+        draw->AddLine({float(p.x+offset.x),float(p.y+offset.y)},{float(q.x+offset.x),float(q.y+offset.y)},color,2.5f);
+        if(stroke%3==0)draw->AddLine({float(mid.x+nx*side*2),float(mid.y+ny*side*2)},{float(mid.x+nx*side*7),float(mid.y+ny*side*7)},color,1.8f);
+      }++stroke;
+    };
+    for(int y=0;y<rows-1;++y)for(int x=0;x<columns-1;++x){const auto& a=frontSamples[size_t(y)*columns+x];const auto& b=frontSamples[size_t(y)*columns+x+1];const auto& c=frontSamples[size_t(y+1)*columns+x+1];const auto& e=frontSamples[size_t(y+1)*columns+x];segment(a,b,c);segment(a,c,e);}
   }
   void geographicLine(ImDrawList* d,const std::vector<Point>& points,ImU32 color,float width,bool dashed=false,bool smoothCorners=true){
     if(points.size()<2)return;
@@ -94,14 +149,19 @@
     smooth.push_back(points.back());
     constexpr double rad=.017453292519943295;
     auto visibleSurface=[&](Point p){return !camera.globe||std::sin(p.y*rad)*std::sin(camera.latitude*rad)+std::cos(p.y*rad)*std::cos(camera.latitude*rad)*std::cos((p.x-camera.longitude)*rad)>=0;};
-    int segment=0;
+    double dashTravel=0;
     for(size_t n=1;n<smooth.size();++n){Point a=smooth[n-1],b=smooth[n];double dx=std::remainder(b.x-a.x,360.0),dy=b.y-a.y;int steps=std::clamp(int(std::ceil(std::hypot(dx,dy)/.12)),1,256);
-      for(int j=0;j<steps;++j,++segment){Point ga=mix(a,b,double(j)/steps),gb=mix(a,b,double(j+1)/steps);bool va=visibleSurface(ga),vb=visibleSurface(gb);if(!va&&!vb)continue;
+      for(int j=0;j<steps;++j){Point ga=mix(a,b,double(j)/steps),gb=mix(a,b,double(j+1)/steps);bool va=visibleSurface(ga),vb=visibleSurface(gb);if(!va&&!vb)continue;
         if(va!=vb){double lo=0,hi=1;for(int k=0;k<24;++k){double mid=(lo+hi)*.5;if(visibleSurface(mix(ga,gb,mid))==va)lo=mid;else hi=mid;}Point edge=mix(ga,gb,(lo+hi)*.5);if(va)gb=edge;else ga=edge;}
-        if(dashed&&(segment/4)%2)continue;
         Point pa=camera.project(ga),pb=camera.project(gb);double period=camera.width*camera.zoom;
         if(!camera.globe)pb.x=pa.x+std::remainder(pb.x-pa.x,period);
-        for(int copy=camera.globe?0:-1;copy<=(camera.globe?0:1);++copy){float shift=float(copy*period);if(std::max(pa.x,pb.x)+shift<camera.x||std::min(pa.x,pb.x)+shift>camera.x+camera.width)continue;d->AddLine({float(pa.x)+shift,float(pa.y)},{float(pb.x)+shift,float(pb.y)},color,width);}
+        const double length=std::hypot(pb.x-pa.x,pb.y-pa.y);
+        for(int copy=camera.globe?0:-1;copy<=(camera.globe?0:1);++copy){float shift=float(copy*period);if(std::max(pa.x,pb.x)+shift<camera.x||std::min(pa.x,pb.x)+shift>camera.x+camera.width)continue;
+          if(!dashed)d->AddLine({float(pa.x)+shift,float(pa.y)},{float(pb.x)+shift,float(pb.y)},color,width);
+          else for(double travel=0;travel<length;){double phase=std::fmod(dashTravel+travel,14.0),end=std::min(length,travel+(phase<9?9-phase:14-phase));if(end<=travel+.0001)break;
+            if(phase<9){double t=travel/length,u=end/length;d->AddLine({float(pa.x+(pb.x-pa.x)*t)+shift,float(pa.y+(pb.y-pa.y)*t)},{float(pa.x+(pb.x-pa.x)*u)+shift,float(pa.y+(pb.y-pa.y)*u)},color,width);}travel=end;
+          }
+        }dashTravel+=length;
       }
     }
   }
@@ -203,18 +263,27 @@
           else if(site.type==Facility::IndustrialPark||site.type==Facility::Factory)regionEffect(draw,site.region,IM_COL32(128,210,198,195));
         }
       }
-      for(size_t n=0;n<s.units.size();++n){const auto& unit=s.units[n];if(unit.health<=0||!unit.deployed||!activeUnit(unit.type))continue;bool visible=false;Point actual=displayedUnit(n),p=camera.project(actual,&visible);if(!visible)continue;
+      for(size_t n=0;n<s.units.size();++n){const auto& unit=s.units[n];if(unit.health<=0||!unit.deployed||!activeUnit(unit.type))continue;bool visible=false;Point actual=displayedUnit(n),p=camera.project(actual,&visible);
         bool selected=std::find(selectedUnits.begin(),selectedUnits.end(),int(n))!=selectedUnits.end()||selectedUnit==int(n),hovered=hoverUnit==int(n);
         ImU32 color=unit.owner==s.player?IM_COL32(91,174,255,255):IM_COL32(255,135,78,255);if(unit.remaining>0)color=IM_COL32(226,189,115,255);
-        if(showRanges&&(selected||hovered)&&unit.remaining<=0){auto weapons=sim.unitWeapons(unit);for(size_t w=0;w<weapons.size();++w){const auto& weapon=weapons[w];ImU32 ring=weapon.targetMask&4?IM_COL32(101,223,188,165):weapon.targetMask&2?IM_COL32(190,158,249,165):IM_COL32(98,181,255,165);geographicalRing(draw,actual,weapon.maxRangeKm,ring,w%2!=0);if(weapon.minRangeKm>0)geographicalRing(draw,actual,weapon.minRangeKm,ring,true);}}
         if(selected&&unit.moving){
-          const auto& planned=orderPreview(n).path;
-          std::vector<Point> route={actual};route.insert(route.end(),unit.waypoints.begin(),unit.waypoints.end());geographicLine(draw,route,IM_COL32(128,199,255,235),2.0f,true,false);
-          if(!unit.pendingDestinations.empty()&&planned.size()>unit.waypoints.size()){
-            std::vector<Point> queued{route.back()};queued.insert(queued.end(),planned.begin()+unit.waypoints.size(),planned.end());geographicLine(draw,queued,IM_COL32(170,211,242,185),1.4f,true,false);
-          }
-          label(draw,{p.x,p.y-32},"Arrival "+durationText(arrivalETA(n))+" at 1x",IM_COL32(184,218,250,240));
+          const auto& preview=orderPreview(n);const auto& planned=preview.path;
+          size_t activeCount=std::min(unit.waypoints.size(),planned.size());
+          // A moving order can temporarily have no committed waypoints; the
+          // preview then contains its actual freshly planned first leg.
+          if(!activeCount){while(activeCount<planned.size()){Point q=planned[activeCount++];if(distanceKm(q,unit.destination)<.01)break;}}
+          std::vector<Point> active{actual};active.insert(active.end(),planned.begin(),planned.begin()+activeCount);
+          geographicLine(draw,active,IM_COL32(5,17,24,220),4.f,false,false);
+          geographicLine(draw,active,IM_COL32(116,217,238,245),2.f,false,false);
+          if(activeCount<planned.size()){std::vector<Point> queued{active.back()};queued.insert(queued.end(),planned.begin()+activeCount,planned.end());geographicLine(draw,queued,IM_COL32(154,210,232,220),1.6f,true,false);}
+          auto marker=[&](Point destination,int number,bool final){bool shown=false;Point q=camera.project(destination,&shown);if(!shown)return;draw->AddCircleFilled(vec(q),6,IM_COL32(5,17,24,230),20);draw->AddCircle(vec(q),6,IM_COL32(131,223,240,245),20,1.5f);
+            draw->AddLine({float(q.x)-3,float(q.y)},{float(q.x)+3,float(q.y)},IM_COL32(131,223,240,245),1);draw->AddLine({float(q.x),float(q.y)-3},{float(q.x),float(q.y)+3},IM_COL32(131,223,240,245),1);
+            label(draw,{q.x+6,q.y-13},final?"Arrival "+durationText(preview.eta)+" at 1x":"Order "+std::to_string(number),IM_COL32(184,226,240,245));
+          };
+          marker(unit.destination,1,unit.pendingDestinations.empty());for(size_t k=0;k<unit.pendingDestinations.size();++k)marker(unit.pendingDestinations[k],int(k)+2,k+1==unit.pendingDestinations.size());
         }
+        if(showRanges&&(selected||hovered)&&unit.remaining<=0){auto weapons=sim.unitWeapons(unit);for(size_t w=0;w<weapons.size();++w){const auto& weapon=weapons[w];ImU32 ring=weapon.targetMask&4?IM_COL32(101,223,188,165):weapon.targetMask&2?IM_COL32(190,158,249,165):IM_COL32(98,181,255,165);geographicalRing(draw,actual,weapon.maxRangeKm,ring,w%2!=0);if(weapon.minRangeKm>0)geographicalRing(draw,actual,weapon.minRangeKm,ring,true);}}
+        if(!visible)continue;
         unitSymbol(draw,p,unit.type,color,selected||hovered,unit.owner!=s.player);
         for(int pip=0;pip<3;++pip){ImVec2 dot{float(p.x)+(pip-1)*6,float(p.y)-15};draw->AddCircleFilled(dot,2.4f,unit.health>pip*100.0/3?color:IM_COL32(33,48,67,230),12);draw->AddCircle(dot,2.4f,IM_COL32(6,16,30,230),12,1); }
       }
