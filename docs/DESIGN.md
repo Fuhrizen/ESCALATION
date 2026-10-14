@@ -1,57 +1,57 @@
-# Design: direct map command and controlled escalation
+# Design: paced combat and predictable command
 
-Version 0.3 changes the loop to nation preview → allocate regional output → research or military production → direct movement orders → local combat and town occupation. The map occupies the screen between compact HUD bars. Construction, research and forces panels open on demand; selecting land, buildings or units opens contextual controls.
+Version 0.4's loop is choose a nation → weight research versus construction → fabricate → place ready infrastructure → produce formations → move, fight and occupy. Research, construction, military commands and inspection have stable screen locations. The player sees durations, percentages and states rather than a work-point economy.
 
-## Campaign and production
+## Interface and assets
 
-The alternate-history campaign starts in 1920 using modern reference geography. Two active nations receive 24 generated regions each, starting military/industrial facilities and four infantry formations per side. Other nations remain static. At 1× the deterministic simulation advances four days per real second; render interpolation smooths movement between daily steps.
+The essential top HUD shows identity, peace/war, date, pause/speed and options. The bottom rail opens construction, research, forces and log. A fixed right inspector retains the selected formation/building/region; another hovered entity gets a compact preview without displacing selection or commands. Unit actions precede detailed statistics. Construction has Catalog, Queue and Ready tabs with visible counts.
 
-The extraction chains, treasury payments, tax buildings and manually upgraded roads are retired. Controlled regions contribute production work from development and operational industrial sites. A shared research/production slider divides this output. All active player construction, compatible facility unit orders and warhead production share the production portion equally, redistributing spare work when a job finishes. A site cannot produce units while it is under construction, disabled, destroyed or outside player control. Pending units at a seized base are cancelled. Cancellation redirects future production; work already spent is lost.
+Research uses a stable full-width command surface. Field navigation and allocation stay above a left programme/technology inspector and a horizontally advancing spline canvas. A foundation opens two actual sibling prerequisite chains; selection inspects a card and Queue is explicit. Search, Fit, Current and middle-drag/wheel browsing are available. Large text does not require a different movable-window arrangement.
 
-If one side has no eligible jobs, its allocation redirects to the other side. Research needs an operational research centre. Laboratories and science research improve research conversion; industrial research improves regional output. Allocation changes update estimates without advancing simulation.
+Licensed DejaVu Sans regular/bold replace the tiny bitmap typography. One original geometric icon vocabulary supplies map markers, catalog cards and inspector portraits. Cyan/amber/green/coral states are reinforced with words and progress, not color alone. Selected/hovered weapon circles are geodesic projections of the exact mechanical range. Radar is labeled a graphical coverage preview; it does not silently promise unimplemented detection. Industrial effects highlight the affected region.
 
-| Active facility | Work | Role |
-| --- | ---: | --- |
-| Army base | 80 | Ground formations |
-| Arms plant | 100 | Ground formations, output, warhead manufacturing |
-| Airbase | 120 | Aircraft production |
-| Shipyard | 160 | Naval production and abstract embark capability; coastal placement |
-| Missile site | 180 | Missile batteries and strategic delivery |
-| Research centre | 120 | Research conversion and nuclear science support |
-| Radar station | 90 | Map range marker; radar detection remains future work |
-| Command centre | 40 | Administrative map site |
-| Industrial district | 140 | Regional output |
+## Manufacture and allocation
 
-Regions support eight facilities. Every valid queue is admitted without a treasury payment. Pending jobs compete for work, so spamming construction slows unit replacement and early research investment limits immediate force buildup.
+The weight slider divides national research and construction/production capacity. Idle allocation redirects to eligible active jobs, and the UI explains this. There is no treasury or work-currency payment. Manufacturing and technology values remain internal tuning constants; prospective and active ETAs use current output, allocation, eligibility, backlog and doctrine. Estimates assume those inputs remain unchanged.
 
-## Research
+Building manufacture is FIFO. It competes with active units and queued warheads, with equal stream sharing and spare capacity conserved at completion events. A completed building adds a token to Ready inventory. It has no regional output, radar preview, production access or site-slot effect until placed. Placement validates the token, technology, controlled land, capacity and coast before consuming anything. Invalid placement retains the token and mode. Right click/Escape cancels placement; Shift repeats while inventory remains.
 
-The 112-project catalog retains stable IDs for save compatibility, with eight military/industry/science/support fields. Prerequisites include platform progressions and separate support branches. Research advances to the highest completed tier in its field; specialty investment grants 35% faster progress for that field.
+Unit manufacturing remains tied to operational compatible facilities. Disabled/seized/destroyed sources cannot complete queued units. Warheads require operational arms manufacturing and research infrastructure. Cancellation loses completed effort and redirects future capacity. Ready inventory and FIFO progress persist in version-4 snapshots.
 
-Years are reference eras, never locks. Effective work is:
+Research retains 112 stable IDs and prerequisite logic for compatibility. The reference year never locks a project. Early research multiplies duration by `1 + .12 × yearsAhead + .002 × yearsAhead²`, frozen at queue admission. A specialization grants 35% faster progress in its field. The graph makes either sibling path available from its prerequisites; it does not promise automatic prerequisite purchasing.
 
-`baseWork × (1 + 0.12 × yearsAhead + 0.002 × yearsAhead²)`
+## Tactical pacing
 
-The cost is frozen when queued and persisted with progress. A player can rush a branch after satisfying prerequisites, trading a large amount of shared national effort for earlier military capability. The UI shows the rush multiplier and queue work/ETA. These formulas are original tuning, not verified ICBM balance data.
+Each deterministic tick represents 0.25 real seconds at 1×. The date still advances one scenario day per tick; travel/combat are intentionally compressed strategy-game values, not real historical speeds. Displayed timings are baseline 1×; faster game speed shortens real waiting.
 
-## Geography and command
+| Formation | Strategic km/s at 1× | Weapon range km | Base damage/s |
+| --- | ---: | ---: | ---: |
+| Infantry | .65 | 3 | 1.3 |
+| Armour | 1.0 | 5 | 1.8 |
+| Artillery | .55 | 30 | 1.0 |
+| Fighter | 8 | 35 | 1.6 |
+| Bomber | 5 | 20 | 1.5 |
+| Destroyer | 1.4 | 45 | 1.5 |
+| Submarine | 1.1 | 20 | 1.6 |
+| Special forces | .8 | 2 | 1.2 |
+| Missile battery | .6 | 120 | 1.2 |
 
-Pinned Natural Earth v5.1.2 populated places and generalized strategic roads are bundled offline. City selection favors population and administrative coverage with spacing to reduce clutter. Imported country affiliation controls assignment; coordinates outside the simplified 110m coastline are moved to the nearest in-country triangle edge. Regions with no imported city receive an explicitly labeled strategic objective. No fictional real-city names are generated.
+`unit_stats.cpp` owns these shared capabilities and geodesic distance. Infantry takes about 154 seconds to cross 100 km off-road. Support adds 3% travel speed per tier; imported roads retain the separate 15% ground bonus. Weapon damage integrates elapsed time and a `.35 + .65 × health/100` firepower factor, allowing an equivalent engagement to resolve rather than asymptotically preserving both units.
 
-Ground formations within 0.10 latitude degrees (longitude scaled by latitude) of imported road geometry gain exactly 15% speed. Support research provides a separate movement modifier. Roads are generalized strategic vectors, not street navigation. A 5-degree spatial index limits nearby road queries and map drawing.
+The highest-population settlement in each region is its main objective; a stable source index breaks ties. Ground occupants must be within 5 km and inside that region. A main objective takes at least 150 seconds at 1×, other towns 90. Occupation strength is capped so stacked formations cannot skip those minimums. Opposing occupiers freeze progress; defenders recover abandoned progress. Every town/objective, including the main city, must belong to the new owner before the region changes hands.
 
-Camera targets ease exponentially. WASD/arrows pan in screen-relative geographic space; middle/right dragging pans the map or rotates the globe. Pointer-focused wheel zoom is eased, with dateline wrapping and an orthographic anchor solve. Typing and captured UI input suppress camera commands. Unit rendering interpolates the prior/current deterministic positions and uses the same positions for picking.
+Defensive AI uses the shared movement planner and actual weapon standoff against troops. Retaking a town instead requires entering the occupation radius and correct region; artillery cannot stop at its much longer weapons radius. Pursuit clears when the incursion disappears. Capturing all rival regions wins; losing all home regions defeats the player.
 
-## Tactical combat and occupation
+## Map and controls
 
-Declare war, select formations, and right-click a destination. Orders specify geography rather than an abstract offensive target. Ground and naval movement validate routes against actual map land/sea; the synthetic theatre link cannot by itself cross ocean. Operational naval infrastructure and naval research provide the prototype's abstract embark capability. Air units use direct strategic movement.
+Pinned Natural Earth sources provide 15,734 major roads with hierarchy and 600 named major river segments. Roads have smooth logarithmic zoom fades and rounded path joins; rivers are decorative and affect no mechanics. The 21 explicit compact territory mappings leave 155 playable groups. Parent names remain readable, child geometry/population/cities join the parent, and internal former-country borders are suppressed. Grouping is a gameplay choice, not a historical border claim.
 
-Nearby hostile units fight automatically using weapon class, range, health and branch modifiers. Aircraft and ships support combat without occupying cities. Infantry, armour, artillery and special forces apply local occupation pressure. A contested town cannot finish capture while opposing occupying forces remain. Region ownership changes only when all contained towns/cities/objectives belong to one side. Capturing every rival region wins; losing every home region defeats the player.
+WASD/arrows pan immediately with normalized diagonals. Middle/right drag track directly with a small smoothing remainder; wheel zoom remains eased and pointer anchored. Settings expose pan, drag, zoom, UI scale and map-layer toggles. Generic keyboard-navigation capture no longer blocks the map; text entry, focus loss and modals do. Pointer gestures remember their furthest travel and retain ownership across docks, preventing a drag-away-and-back from producing an order or inventory deployment. Opening pause cancels gestures and pending zoom.
 
-The basic enemy reacts to real incursions and recaptures lost settlements. It uses the same geographic movement planner. It is a defensive AI, not a full strategic economy or diplomacy agent. A signed unit pressure field drives land-masked color paint and a marching contour; it is separate from authoritative region ownership.
+## Persistence and scope
 
-## Strategic weapons and scope
+Version 4 includes fabricated building progress and ready counts. Older unfinished placed sites migrate to one fabrication job each, preserving their completion fraction. Destroyed historical placeholders preserve producer indices. Expanded country groups may invalidate a campaign whose player/opponent or partition changed; load validates a candidate transactionally.
 
-Warheads require nuclear/science technology, an operational arms plant and laboratory, and 1,200 shared production work. Queued plus available warheads are limited to 20. Delivery requires missile research, an operational missile site and an explicit confirmation. The prototype retains its scripted second strike and mutual-destruction outcome; it does not simulate missile flight, interception or fallout.
+The world still renders 177 source records while only the player and one rival receive detailed economic/tactical simulation. Full air missions, loadouts, detection/fog, interception, diplomacy and full-world strategic AI remain further work. The terrain texture/coastlines remain generalized world-view assets; this iteration does not claim street-scale navigation or exact reference-game parity. Nuclear release retains explicit confirmation and the prototype's scripted second-strike ending.
 
-This revision implements an original ICBM-inspired foundation. Complete reference unit/loadout catalogs, air missions, carrier aviation, detection/fog, diplomacy, espionage, interception and full-world simultaneous simulation remain outside current parity. Desktop interaction and balance require playtesting; smoke screenshots and deterministic tests do not establish match quality or reference-game equivalence.
+Research sources and interface acceptance scenarios are in [UX_REDESIGN.md](UX_REDESIGN.md); numerical tuning here is original, not extracted reference-game data.

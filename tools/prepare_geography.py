@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bundle Natural Earth v5.1.2 cities and strategic roads without runtime downloads.
+"""Bundle Natural Earth v5.1.2 cities, major roads and decorative rivers without runtime downloads.
 
 Source checkout:
   git clone --depth 1 --branch v5.1.2 --filter=blob:none --sparse \
@@ -24,6 +24,7 @@ SOURCE_HASHES = {}
 PINNED_HASHES = {
     'ne_10m_populated_places.geojson': '9b8e3de09048ef00dfc70357dbb9fa324493f214b5e0ae4daf1aa79a8d10116b',
     'ne_10m_roads.geojson': '66a0c7b438e92fd124822cc5921cfa11042f48c294ade5e0f03f2c6640fd0248',
+    'ne_10m_rivers_lake_centerlines.geojson': 'bb854a900ecbd3b408df46d5e16e3e0f974ba55993f9d8b5c26e855273c0905a',
 }
 # The 110m admin-0 map retains the older Natural Earth South Sudan code.
 COUNTRY_ALIASES = {'SSD': 'SDS'}
@@ -121,19 +122,34 @@ def main():
     roads = []
     for feature in source_roads['features']:
         p, geometry = feature['properties'], feature['geometry']
-        if p['scalerank'] > 7 or p['ignore'] or p['type'] in ('Ferry Route', 'Ferry, seasonal', 'Track'):
+        if p['scalerank'] > 4 or p['ignore'] or p['type'] in ('Ferry Route', 'Ferry, seasonal', 'Track'):
             continue
         lines = [geometry['coordinates']] if geometry['type'] == 'LineString' else geometry['coordinates']
         for line in lines:
             points = [[round(x, 5), round(y, 5)] for x, y in simplify(line)]
             points = [p for i, p in enumerate(points) if i == 0 or p != points[i - 1]]
             if len(points) >= 2:
-                roads.append(points)
+                roads.append({'points': points, 'scalerank': int(p['scalerank']),
+                              'type': p['type'], 'name': p['name'] or ''})
+    source_rivers = load(args.source / 'ne_10m_rivers_lake_centerlines.geojson')
+    rivers = []
+    for feature in source_rivers['features']:
+        p, geometry = feature['properties'], feature['geometry']
+        name = p.get('name_en') or p.get('name')
+        if p['scalerank'] > 5 or not name:
+            continue
+        lines = [geometry['coordinates']] if geometry['type'] == 'LineString' else geometry['coordinates']
+        for line in lines:
+            points = [[round(x, 5), round(y, 5)] for x, y in simplify(line, 0.025)]
+            points = [p for i, p in enumerate(points) if i == 0 or p != points[i - 1]]
+            if len(points) >= 2:
+                rivers.append({'points': points, 'scalerank': int(p['scalerank']), 'name': name})
     args.output.mkdir(parents=True, exist_ok=True)
     meta = {'source': 'Natural Earth', 'version': VERSION, 'license': 'Public domain'}
     hashes = {
         'settlements.json': write(args.output / 'settlements.json', {**meta, 'cities': cities}),
         'roads.json': write(args.output / 'roads.json', {**meta, 'roads': roads}),
+        'rivers.json': write(args.output / 'rivers.json', {**meta, 'rivers': rivers}),
     }
     manifest = {
         **meta, 'source_commit': COMMIT,
@@ -141,13 +157,14 @@ def main():
         'source_sha256': SOURCE_HASHES, 'output_sha256': hashes,
         'world_sha256': hashlib.sha256(world_raw).hexdigest(),
         'country_aliases': COUNTRY_ALIASES,
-        'cities': len(cities), 'roads': len(roads),
+        'cities': len(cities), 'roads': len(roads), 'rivers': len(rivers),
         'settlement_selection': 'Per country: min(192, round(24+8*sqrt(population/1e6))); admin-1 coverage, then population; 0.25-degree spacing; capitals preserved',
-        'road_selection': 'scalerank <= 7, ignore == 0; exclude ferry and track; simplify 0.02 degrees; round coordinates to 5 decimal places',
+        'road_selection': 'scalerank <= 4, ignore == 0; exclude ferry and track; simplify 0.02 degrees; round coordinates to 5 decimal places',
+        'river_selection': 'Named rivers and lake centerlines with scalerank <= 5; simplify 0.025 degrees; round to 5 decimals; decorative only',
         'limitations': 'Modern reference data; incomplete strategic road and town coverage. Empty regions must not invent city names.'
     }
     (args.output / 'geography.manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
-    print(f'Prepared {len(cities)} real settlements and {len(roads)} strategic road lines')
+    print(f'Prepared {len(cities)} real settlements and {len(roads)} major road lines and {len(rivers)} decorative river lines')
 
 
 if __name__ == '__main__':

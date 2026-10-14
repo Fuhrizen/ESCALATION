@@ -1,30 +1,28 @@
 # Validation record
 
-Validated on 14 October 2026 in a Linux x86-64 workspace with GCC 13, local CMake 4.4.4, GLFW 3.4, Dear ImGui 1.91.8 and Mesa software OpenGL. This records prototype checks, not desktop release qualification.
+Validated 14 October 2026 on Linux x86-64, GCC 13, CMake 4.4.4, GLFW 3.4, Dear ImGui 1.91.8 and Mesa software OpenGL.
 
 | Check | Result |
 | --- | --- |
-| CMake C++17 core build / CTest | Three suites passed |
-| Core/world/production/research/save checks | 14,720 passed |
-| Projection and camera motion | 6,198 passed |
-| Tactical combat/navigation checks | 120 passed |
-| ASan + UBSan valid-flow suites | 14,690 core, 6,198 camera and 120 tactical checks passed; 49,275-day headless run passed |
-| All playable nation starts | 170 canonical campaigns; every objective lies on the correct in-country region |
-| Native client build | Passed with GLFW null platform |
-| Actual OpenGL smoke | Ten captured states; no GL errors |
-| Render context | Mesa 25.2.8, OpenGL 4.5 core; shaders target OpenGL 3.3 |
-| Build orchestration tests | Seven passed; package requires roads, settlements and geography manifest |
-| Data regeneration | Geography derivatives reproduced byte-for-byte; source/output/world hashes verified |
-| Road index | 5,498 sampled road midpoint queries preserve their originating road; dateline coverage checked |
-| Campaign benchmark | 49,275 days; approximately 271,000 ticks/sec, one optimized two-nation run without active war |
+| Native CMake / CTest | Five suites passed: core, projection, tactical, native input and OpenGL smoke |
+| Core/map/research/fabrication/save checks | 13,861 passed |
+| Projection and camera/gesture checks | 6,206 passed |
+| Tactical movement/combat/occupation checks | 11,108 passed |
+| Real App / Dear ImGui input events | 12 integration checks passed |
+| ASan + UBSan valid-flow checks | 13,837 core, 11,108 tactical, 6,206 camera checks and 49,275-day headless run passed |
+| Build pipeline orchestration | Seven tests passed; required package assets include rivers and licensed fonts |
+| Native screenshot smoke | Fourteen states per run, no GL errors; 1280×720 at 125% UI scale and 1920×1080 at 100% additionally rendered and inspected |
+| Rendering context | Mesa 25.2.8 OpenGL 4.5 core; shaders target 3.3 |
+| Geography | 177 source records, 155 playable groups, 15,734 major roads, 600 named river segments |
+| Headless benchmark | 49,275 ticks, approximately 295,000 ticks/s in one optimized two-nation run without active war |
 
-Core checks cover real country picking/land partitions, flags, imported cities and grouping, all-region objective placement, regional allocation, finite production sharing and spare-work redistribution, cancellation, source/lab loss, prerequisites, year-free rush and frozen cost, save continuation, malformed snapshots, version-2 queue migration, geometric aircraft orders and strategic production/release consequences.
+Core tests cover country picking/clipping, flags, all playable campaign objective placement, explicit territory grouping, major-road/rivers hierarchy, dateline indexing, allocation eligibility, fabrication-before-placement, ready inventory without map benefits, FIFO completion carryover, unit/warhead fairness, queued backlog ETAs, coastal validation, cancellations, year-free research, frozen premiums, v4 roundtrips, v2/v3 migrations and malformed-save transactional rejection.
 
-Tactical checks cover nonteleporting movement, exactly 15% road speed, separate support research speed, peace/unfinished/invalid order rejection, automatic simultaneous local damage, contested-town capture, partial regional occupation, all-town control, captured-base cancellation, type-specific weapons, defensive AI motion, pressure signs, ocean embark gates, naval land rejection, neutral-land detours and ended-campaign/history limits.
+Tactical tests cover 120-second infantry travel, exact 15% road and separate support modifiers, kilometre weapon ranges, eventual symmetric battle resolution, 150-second main objectives, 90-second towns, stacked occupation caps, contested progress, same-region occupation, artillery countercapture, stale pursuit, rejected reorder preservation, terrain/ocean/neutral navigation and saved movement.
 
-Camera checks cover flat/globe picking at 1× through 512×, pan convergence, frame-rate independence, pointer anchor preservation at datelines and positive/negative latitudes, zoom convergence, bounds and focus reset. Physical input behavior is reviewed in code; it still needs desktop playtesting.
+Projection/gesture tests cover flat/globe picking at 1×–512×, pointer-anchored easing, datelines, frame-rate independence, camera bounds, drag tracking, peak travel and modal cancellation. Native input checks feed queued ImGui keys/mouse events into the actual `App::controls`: D and arrows work despite generic navigation capture, typing and research suppress hidden map motion, map-owned drags cross docks, excursion/return cannot become a command/deployment, modals cancel gestures/zoom and destroyed selections cease offering orders.
 
-Geography review checks pinned v5.1.2 source hashes, modern source-country aliases, deterministic reductions, repeated loading, malformed input rejection and the spatial index. Imported coordinates near simplified coastlines are adjusted in-country for playable objectives. Roads are strategic vectors, not a street-level routing database.
+Native rendering was inspected for the branch canvas, readable selected/hover inspector, construction catalog, queue/ready counts, main-city inspection, river/road overlays, options and placement ghost. The inspector avoids duplicate cards and places command actions above statistics. Additional low-resolution/high-scale smoke exposed clipping that was corrected before final captures. The smoke path creates a genuine EGL OpenGL context; it does not mock rendering or use generated concept images.
 
 ## Reproduce
 
@@ -33,18 +31,19 @@ cmake -S . -B build-core -DESCALATION_BUILD_CLIENT=OFF -DCMAKE_BUILD_TYPE=Releas
 cmake --build build-core --parallel
 ctest --test-dir build-core --output-on-failure
 python3 tests/test_build_pipeline.py
+python3 tools/verify.py --sanitize
 ```
 
-Native surfaceless smoke:
+Native validation:
 
 ```sh
-cmake -S . -B build-native -DESCALATION_NULL_PLATFORM=ON -DCMAKE_BUILD_TYPE=Release
+cmake -S . -B build-native -DESCALATION_NULL_PLATFORM=ON -DBUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build-native --parallel
-EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 ./build-native/escalation --smoke build-native/smoke
+ctest --test-dir build-native --output-on-failure
+EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 ./build-native/escalation --smoke build-native/smoke-720 1280 720 1.25
+EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 ./build-native/escalation --smoke build-native/smoke-1080 1920 1080 1.0
 ```
 
-This creates a genuine EGL pbuffer OpenGL context; screenshots are from the application. No mocked renderer, browser or generated concept imagery is used.
+Sanitizers exclude deliberate exception/unwinding fixtures and leak enumeration because this restricted workspace cannot expose process/stack metadata. Ordinary core tests include malformed-save cases. Compiler temporary files are isolated in the verification directory.
 
-The compiler-only path remains `python3 tools/verify.py`; optional `--sanitize` uses ASan/UBSan and excludes deliberate exception/unwinding fixtures in this restricted workspace. Leak enumeration is disabled because process/stack metadata is unavailable. These limitations do not affect the ordinary malformed-save suite.
-
-The benchmark excludes loading, region generation, rendering and active tactical war. It does not establish full-world simultaneous simulation, target GPU frame rates or intended match duration. No Windows runtime, rootless Podman image execution or multi-GPU qualification was performed here. The bounded visibility-graph planner may reject complex feasible detours; generalized geometry and 0.08-degree route samples cannot resolve street-scale obstacles. Exact ICBM feature/balance parity is not established.
+These results validate deterministic flows and native presentation, not balanced competitive matches or physical-device usability on every desktop. Windows runtime, real rootless Podman image execution, multiple GPUs and long playtests were not performed. Road/rivers are generalized strategic vectors; rivers have no movement/combat effect. The bounded route planner can reject complex feasible detours. Only two nations receive detailed simulation, and complete reference-game catalogs/loadouts, detection, interception and diplomacy remain further work.

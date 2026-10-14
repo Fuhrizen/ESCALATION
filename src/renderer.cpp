@@ -1,6 +1,7 @@
 #include "escalation/renderer.hpp"
 #include <algorithm>
 #include <cmath>
+#include <map>
 namespace escalation {
   static constexpr double rad=0.017453292519943295;
   Point Camera::project(Point p,bool* visible) const {
@@ -54,7 +55,7 @@ void main(){
   terrain=mix(terrain,vec3(0.62,0.68,0.69),smoothstep(62.0,82.0,abs(geo.y))*0.65);
   base.rgb=mix(terrain*shade,base.rgb,id>=192?0.35:0.14);
  }
- if(border==1)base=vec4(base.rgb*1.65,0.7);
+ if(border==1)base=vec4(base.rgb*1.35,0.48);
  float light=globe==1?0.65+0.35*sqrt(max(depth,0)):1.0;color=vec4(base.rgb*light,base.a);
 })";
   static gl::UInt shader(gl::Enum type,const char* source){
@@ -117,15 +118,23 @@ void main(){
       v.push_back({float(p.x),float(p.y),float(id)});
     };
     auto triangle=[&](auto&& self,std::array<Point,3> t,int id,int level)->void{double d[3];for(int i=0;i<3;++i)d[i]=std::hypot(t[i].x-t[(i+1)%3].x,t[i].y-t[(i+1)%3].y);int k=int(std::max_element(d,d+3)-d);if(d[k]>1.5&&level<12){int next=(k+1)%3,third=(k+2)%3;Point mid{(t[k].x+t[next].x)/2,(t[k].y+t[next].y)/2};self(self,{t[k],mid,t[third]},id,level+1);self(self,{mid,t[next],t[third]},id,level+1);}else for(auto p:t)emit(land,p,id);};
+    struct BorderEdge { Point a,b; int owner=0,count=0; };
+    std::map<std::array<long long,4>,BorderEdge> edges;
+    auto keyPoint=[](Point p){double x=std::remainder(p.x,360.0);if(x>=180)x-=360;return std::array<long long,2>{std::llround(x*1000000),std::llround(p.y*1000000)};};
     for(size_t i=0;i<world.countries.size();++i){
-      auto& c=world.countries[i];
-      for(auto t:c.triangles)triangle(triangle,t,int(i),0);
       if(world.canonical(int(i))!=int(i))continue;
-      for(auto& p:c.polygons)for(auto& ring:p.rings)for(size_t k=0;k<ring.size();++k){
-        emit(borders,ring[k],int(i));
-        emit(borders,ring[(k+1)%ring.size()],int(i));
+      const auto& c=world.countries[i];
+      for(auto t:c.triangles)triangle(triangle,t,int(i),0);
+      // Canonical groups contain each child's geometry. Shared edges inside a
+      // group occur twice and are removed rather than drawing old micro-borders.
+      for(const auto& p:c.polygons)for(const auto& ring:p.rings)for(size_t k=0;k<ring.size();++k){
+        Point a=ring[k],b=ring[(k+1)%ring.size()];auto ka=keyPoint(a),kb=keyPoint(b);if(kb<ka){std::swap(ka,kb);std::swap(a,b);}
+        std::array<long long,4> key{ka[0],ka[1],kb[0],kb[1]};auto it=edges.find(key);
+        if(it==edges.end())edges.emplace(key,BorderEdge{a,b,int(i),1});
+        else if(it->second.owner==int(i))++it->second.count;
       }
     }
+    for(const auto& entry:edges)if(entry.second.count==1){emit(borders,entry.second.a,entry.second.owner);emit(borders,entry.second.b,entry.second.owner);}
     for(int lat=-90;lat<90;lat+=3)for(int lon=-180;lon<180;lon+=3){
       Point a{
         double(lon),double(lat)
@@ -213,7 +222,8 @@ void main(){
       float h=float(i%4)*0.025f;
       auto& r=s.regions[i];
       colors[192+i]=r.owner==s.player?std::array<float,4>{0.13f+h,0.40f+h,0.36f+h,1}:std::array<float,4>{0.46f+h,0.22f+h,0.20f+h,1};
-      if(int(i)==s.target)colors[192+i]={0.72f,0.40f,0.12f,1};
+      // Movement targets are orders, not an abstract offensive region.
+
       if(int(i)==selectedRegion)colors[192+i]={0.34f,0.67f,0.63f,1};
     }
     colors[254]={0.065f,0.14f,0.18f,0.6f};
@@ -240,9 +250,9 @@ void main(){
     draw(land_,gl::TRIANGLES,c,1.003f);
     if(s.player>=0){
       draw(regions_,gl::TRIANGLES,c,1.005f);
-      draw(regionBorders_,gl::LINES,c,1.006f,true);
+      if(c.borders)draw(regionBorders_,gl::LINES,c,1.006f,true);
     }
-    draw(borders_,gl::LINES,c,1.007f,true);
+    if(c.borders)draw(borders_,gl::LINES,c,1.007f,true);
     gl::Disable(gl::DEPTH_TEST);
     gl::BindVertexArray(0);
     gl::UseProgram(0);

@@ -7,11 +7,23 @@
 #include <cmath>
 namespace escalation {
   struct Camera {
-    bool globe=true,terrain=true;
+    bool globe=true,terrain=true,borders=true;
     double longitude=15,latitude=22,zoom=0.88;
     float x=0,y=60,width=900,height=600;
     Point project(Point p,bool* visible=nullptr) const;
     std::optional<Point> unproject(Point p) const;
+  };
+  // A map gesture owns its pointer until release, including travel over docks.
+  // Remember the furthest travel so returning to the start cannot become a click.
+  struct MapGesture {
+    Point origin{};
+    double furthest=0;
+    bool active=false;
+    void begin(Point p){origin=p;furthest=0;active=true;}
+    void observe(Point p){if(active)furthest=std::max(furthest,std::hypot(p.x-origin.x,p.y-origin.y));}
+    bool dragged(double threshold) const{return active&&furthest>threshold;}
+    bool click(double threshold) const{return active&&!dragged(threshold);}
+    void cancel(){active=false;}
   };
   // Exponential easing consumes motion in geographic space and preserves the
   // geographic point below the wheel cursor throughout each zoom animation.
@@ -21,13 +33,19 @@ namespace escalation {
     bool zooming=false;
     void reset(){ pending={}; zooming=false; }
     void pan(Point delta){ pending.x+=delta.x; pending.y+=delta.y; }
+    void directPan(Camera& c,Point delta){
+      c.longitude=std::remainder(c.longitude+delta.x,360.0);c.latitude=std::clamp(c.latitude+delta.y,-89.0,89.0);
+    }
+    void drag(Camera& c,Point delta){
+      directPan(c,{delta.x*.88,delta.y*.88});pan({delta.x*.12,delta.y*.12});
+    }
     void wheel(const Camera& c,Point anchor,double steps){
       desiredZoom=std::clamp((zooming?desiredZoom:c.zoom)*std::exp(steps*0.16),c.globe?0.55:0.8,512.0);
       zoomAnchor=anchor; zooming=true;
     }
     void advance(Camera& c,double dt){
       dt=std::clamp(dt,0.0,0.1);
-      double ease=1-std::exp(-18*dt);
+      double ease=1-std::exp(-28*dt);
       c.longitude=std::remainder(c.longitude+pending.x*ease,360.0);
       c.latitude=std::clamp(c.latitude+pending.y*ease,-89.0,89.0);
       pending.x*=1-ease; pending.y*=1-ease;

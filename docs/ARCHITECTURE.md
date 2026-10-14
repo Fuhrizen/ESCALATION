@@ -14,7 +14,7 @@ Country polygons are triangulated once. The renderer subdivides long triangle ed
 
 Active countries are subdivided into 24 gameplay sectors each. Deterministic area-weighted land samples and farthest-point selection generate seed sites; original triangles are clipped against Voronoi halfplanes. This preserves coastlines, holes and disconnected land. Neighbour relations come from shared Voronoi edges. A closest-sector link establishes the prototype theatre between the two nations. Disconnected sectors require naval landing capability.
 
-Only 48 regions receive economic and war simulation. All other countries remain static map features. Sector geometry and buffers are regenerated on campaign creation/load, not per frame. Country picking uses point-in-polygon tests; active sector picking uses clipped convex patches. Higher-resolution map data will need a spatial index and multiple geometry LODs. Country picking normalizes explicit gameplay territory aliases; merged geometry is appended once at load. The map has 177 source records and 170 playable groups.
+Only 48 regions receive economic and war simulation. All other countries remain static map features. Sector geometry and buffers are regenerated on campaign creation/load, not per frame. Country picking uses point-in-polygon tests; active sector picking uses clipped convex patches. Higher-resolution map data will need a spatial index and multiple geometry LODs. Country picking normalizes explicit gameplay territory aliases; merged geometry is appended once at load. The map has 177 source records and 155 playable groups.
 
 Relative elevation is sampled by geographic coordinates in the fragment shader for shaded relief, with political color blended above it. This changes appearance only. The bundled 2048×1024 raster and 110m coastlines have finite detail at 512× zoom. Flags are baked into one 1536×864 atlas, with source SVGs and mapping retained; no per-flag runtime downloads or separate texture bindings are needed.
 
@@ -26,7 +26,7 @@ Campaign data uses vectors for regions, settlements, facilities, units and paths
 
 Geography imports are cached in World. Roads have a 5-degree spatial index covering each segment's bounding cells, including dateline crossings; nearby queries return deduplicated candidates. Rendering uses zoom-dependent road and city overlays, and signed local unit pressure for frontline paint. Higher-resolution geometry still needs additional LOD and broader spatial caches.
 
-Version-3 saves add settlement identity/position/population/ownership/capture, frozen research job cost and strategic production work. Unit orders include geometric waypoints. Earlier saves migrate inactive economic facilities and production work. Loading builds a candidate campaign and validates fields before replacing the running state. Geometry derives from bundled world data; writes use temporary files and retain the previous backup during replacement.
+Version-4 saves add fabrication queues and ready inventory alongside settlement identity/position/population/ownership/capture, frozen research job cost and strategic production work. Unit orders include geometric waypoints. Earlier saves migrate inactive economic facilities and production work. Loading builds a candidate campaign and validates fields before replacing the running state. Geometry derives from bundled world data; writes use temporary files and retain the previous backup during replacement.
 
 ## Drawing budget
 
@@ -45,3 +45,13 @@ The POC prioritizes reliable OpenGL 3.3 hardware coverage rather than compute sh
 - Consider worker threads for independent regional jobs after deterministic ordering and dependency boundaries are established.
 
 No 177-nation simulation or large-scale tactical benchmark is claimed in this iteration.
+
+## Command and pacing redesign
+
+The App implementation is split into `ui_hud.inl`, `ui_panels.inl`, `ui_research.inl` and `ui_map.inl`, included inside its class so common selection, camera and campaign state remain shared. `ui_icons.hpp` supplies exact scalable vector glyphs for units and facilities. Bundled regular/bold fonts have explicit redistribution notices.
+
+`unit_stats.cpp` is the single source for kilometres, strategic travel speeds, weapon ranges and DPS. Movement integrates `.25` seconds per deterministic tick; combat uses the same geodesic distance. Occupation minimums use real seconds at 1× rather than region-sized geographic rates. Positive low-health firepower ensures symmetric engagements eventually resolve.
+
+Fabrication is a serial building stream sharing production with unit and warhead streams. Completion events conserve residual capacity and immediately activate the next FIFO item. ETA queries use the same eligibility rules, queued backlog and doctrine multiplier. They assume allocation/output remain unchanged. Ready inventory never contributes output or occupies a map slot. Placement and its ghost use one validation method. Legacy placed jobs migrate into the stream while retaining historical site-vector indices.
+
+Map-owned pointer gestures retain ownership across docks and record peak travel, preventing an excursion-and-return from becoming a click. Focus loss/modal opening cancels the gesture and pending zoom. Native ImGui event tests exercise the actual App controls without creating a rendering context; OpenGL smoke remains a separate genuine EGL test.

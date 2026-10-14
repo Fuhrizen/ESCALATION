@@ -2,7 +2,7 @@
 
 A native C++17 / OpenGL 3.3 strategy prototype about building a nation before committing it to war. Inspired by the conventional/nuclear escalation of **ICBM: Escalation** and the map-led national management of **State of Command**, with original code and presentation.
 
-Version 0.3 replaces the currency/resource loop with **shared research and military production**, automatic local combat and settlement-based occupation. Camera movement and zoom are eased, and real roads and populated places are bundled offline. The complete Natural Earth world is rendered; one nation and one rival receive detailed simulation.
+Version 0.4 focuses on **readable command, deliberate combat pacing and manufacture-before-placement**. Units use shared kilometre-based capabilities; research and construction are controlled by a weight slider and completion estimates. Common inspection lives in a fixed side dock. Major roads, decorative rivers, proportional typography and original vector icons are bundled offline.
 
 ![Native map and national command](docs/map.png)
 
@@ -10,14 +10,16 @@ Version 0.3 replaces the currency/resource loop with **shared research and milit
 
 ## Playable now
 
-- Nation selection, flags, reference statistics, globe/flat projections and bundled shaded relief.
-- Smooth camera panning with WASD/arrows and middle/right drag; eased pointer-focused zoom up to 512×. Unit rendering interpolates daily simulation positions.
-- 24 clipped gameplay regions per active nation, imported population centers, decluttered city labels and strategic road lines. Ground units on an imported road receive a 15% movement bonus.
-- Regional output shared between research and construction/unit production. Multiple production jobs split the available work; idle allocations redirect to the active side. The old extraction and currency economy is retired.
-- Prerequisite research with a saved work cost: early technology is always accessible once its prerequisites are met, with an increasing cost premium for research ahead of its reference era.
-- Military facilities, contextual unit production, nine differentiated unit families, and strategic warheads that consume shared production work. Nuclear release retains the confirmed scripted second-strike outcome.
-- Move forces directly into hostile areas after declaring war. Local units fight automatically; a region changes hands when every town/city/objective in it is held. A reactive enemy defends incursions and attempts to retake occupied settlements.
-- Land-clipped unit pressure and frontline graphics, pause/speed controls, saves, autosaves and save migration.
+- 177 source map records, 155 playable territory groups after 21 explicit compact-territory merges and Antarctica exclusion. Grouped land, population, cities and production belong to the parent nation; old internal country borders are removed from display.
+- Responsive WASD/arrows, direct middle/right drag and pointer-anchored wheel zoom; pause/options with saved pan, drag, zoom, UI scale and map-layer preferences.
+- Fixed unit/building/region inspector, compact hover previews, essential HUD, and separate construction Catalog, Queue and Ready tabs. Licensed DejaVu Sans fonts and a shared original vector-icon vocabulary improve readability.
+- A branching spline research view with field navigation, two actual sibling prerequisite paths, node inspection, explicit queue action, search, Fit/Current and canvas panning. Years increase early research duration; they never block technology.
+- Research/construction weights affect completion times. Building fabrication completes into inventory; placing a ready item validates controlled land, technology, capacity and coast before consuming it. Ready buildings have no map benefits until placed.
+- Slower tactical movement and local weapon ranges shared by combat and range visuals. At 1×, infantry crosses 100 km in about 154 seconds off-road. Base infantry weapon range is 3 km.
+- Main-city occupation takes at least 150 real seconds at 1×; other towns take at least 90. Stacking formations cannot bypass these minimums. Every regional settlement, including its main city, must be controlled. Defenders contest occupation and react to incursions.
+- 15,734 imported major road segments, with smoothly faded hierarchy and rounded geographic paths; nearby ground movement retains its 15% bonus. 600 named major river segments are decorative.
+- Selected/hovered weapon ranges match simulation kilometres. Radar coverage is explicitly a graphical preview; industrial-site inspection highlights the affected region.
+- Version-4 saves retain fabrication queues, ready inventory and prior unit/research/occupation state. Core, native input and genuine OpenGL rendering checks run through CTest.
 
 ## Build on Bazzite with Podman
 
@@ -92,26 +94,27 @@ For Linux render smoke tests without a desktop, install `libegl1 libgl1-mesa-dri
 ## First campaign
 
 1. Select a nation and take command. Campaigns open paused.
-2. Open Research (`R`), queue a project and choose the research/production allocation. Early projects show their additional work cost. Space starts time.
-3. Open Build (`B`), choose a military/industrial facility, then click controlled land. Shift repeats placement; right click cancels placement. Construction and queued units consume the same production allocation.
-4. Select an operational army base, arms plant, airbase or coastal shipyard to queue compatible units. No treasury or hidden resource inventory is required.
-5. Select units or drag a selection box; right click controlled land to move. Declare war through Forces (`U`) before entering hostile territory. Move to enemy settlements to capture them. Every regional objective must be held before ownership transfers.
-6. Use the pressure overlay and city control markers to inspect occupation and enemy counterattacks. Roads improve nearby ground movement by 15%.
-7. Nuclear/science research unlocks warhead production at an operational arms plant and laboratory. Delivery also requires missile research and a missile site. Release is explicitly confirmed and ends this prototype campaign through its scripted second strike.
+2. Open Research (`R`), select a technology card, inspect its prerequisites/effect and queue it. Adjust the research/construction weight to prioritize the programme. Estimates are shown at 1×.
+3. Open Build (`B`). Queue a facility in Catalog, inspect its fabrication in Queue, then use Place from Ready. Valid placement consumes one completed building; invalid placement keeps inventory. Shift repeats while tokens remain.
+4. Click an operational military facility to queue compatible units. Construction and unit/warhead manufacturing share the same production allocation.
+5. Select units or drag a formation box. Shift adds/removes units; right-click orders. Declare war before entering hostile land, then occupy enemy towns with ground formations. The main city has the longest minimum occupation.
+6. Hover or select units/buildings to inspect them in the right dock. Range previews use the same statistics as combat. Use Focus/Fit explicitly; inspection never moves the camera automatically.
+7. Open Options to change camera responsiveness, UI scale or map layers. The menu pauses the campaign and suppresses map commands.
+8. Strategic research unlocks queued warheads. Delivery requires missile research and an operational missile site; explicitly confirmed nuclear release retains the prototype's scripted second-strike ending.
 
 | Control | Action |
 | --- | --- |
-| Left click land/symbol | Nation, region, building or unit context |
-| Drag box / Shift click | Select formation / add unit |
-| Right click | Order selected units / cancel construction |
-| WASD / Arrow keys | Smooth camera pan |
-| Middle drag / Right drag | Smooth globe rotation / map pan |
-| Mouse wheel | Eased zoom toward pointer |
+| Left click / Shift click | Select / add or remove formation member |
+| Drag box | Select formations |
+| Right click | Order / cancel placement |
+| WASD / Arrow keys | Responsive camera pan |
+| Middle drag / Right drag | Pan/rotate, including dragging across docks |
+| Mouse wheel | Anchored eased map zoom; research canvas scrolls horizontally |
 | B / R / U | Construction / research / forces |
 | G / H / F | Projection / fit nation / focus selected unit |
-| Space | Pause / resume |
+| Space | Tactical pause / resume |
+| Escape | Cancel active placement/order mode, otherwise pause/options |
 | F5 / F9 | Save / load newest save |
-| Escape | Close context, then pause menu |
 
 Saves use `%APPDATA%/Escalation` on Windows, or `$XDG_DATA_HOME/escalation` / `~/.local/share/escalation` on Linux. Saves are versioned JSON snapshots; invalid saves are rejected without replacing a running campaign. `ESCALATION_DATA` can override the map-data directory.
 
@@ -123,7 +126,7 @@ The military and city-capture systems are an original implementation of the requ
 
 Subregions are clipped gameplay Voronoi cells, not historical provinces. Generalized Natural Earth roads are strategic data, not street-level navigation. Imported city coordinates/population are modern references; regions without a source city use clearly labeled strategic objectives. The 2048×1024 relief raster is visual elevation, not movement terrain. Deep zoom enlarges the 1:110m coastlines.
 
-Version-3 saves persist settlement ownership/capture and frozen research costs alongside units, buildings and production. Earlier snapshots are migrated to the new economy and capture objectives; changed geography or research prerequisites can invalidate a snapshot. Loading validates a candidate before replacing the running campaign.
+Version-4 saves add fabrication queues and ready inventory. Earlier unfinished sites migrate into one fabrication job each with preserved completion fraction; historical placeholders keep unit producer indices stable. Expanded territory grouping can invalidate older campaigns whose selected nation/opponent or regions changed. Keep backups; a rejected load leaves the running campaign intact.
 
 Brief historical introductions are curated for eight nations; others use clearly labelled scenario introductions. Natural Earth GDP/population are modern reference data. Flag aliases and territorial grouping are explicit gameplay choices, not diplomatic claims. Full-world simultaneous simulation and 2–4 hour balance remain targets requiring benchmarks and playtests.
 

@@ -160,6 +160,7 @@ namespace escalation {
     if(std::filesystem::exists(grouping))applyGroups(grouping.string());
     cities.clear();
     roads.clear();
+    rivers.clear();
     auto settlements=std::filesystem::path(file).parent_path()/"settlements.json";
     if(std::filesystem::exists(settlements)){
       auto data=readJson(settlements.string());
@@ -179,7 +180,16 @@ namespace escalation {
       auto data=readJson(roadFile.string());
       for(auto& row:asArray(field(data,"roads"))){
         WorldRoad road;
-        for(auto& coord:asArray(row)){
+        const auto& coordinates=row.is<Array>()?row:field(row,"points");
+        if(!row.is<Array>()){
+          double rank=number(row,"scalerank");
+          if(!std::isfinite(rank)||rank<0||rank>10||std::floor(rank)!=rank)throw std::runtime_error("Invalid road hierarchy");
+          road.scalerank=int(rank);
+          road.type=string(row,"type");
+          road.name=string(row,"name");
+          if(road.scalerank<0||road.scalerank>10)throw std::runtime_error("Invalid road hierarchy");
+        }
+        for(auto& coord:asArray(coordinates)){
           auto& pair=asArray(coord);
           if(pair.size()!=2)throw std::runtime_error("Invalid road coordinate");
           Point point{asNumber(pair[0]),asNumber(pair[1])};
@@ -188,6 +198,27 @@ namespace escalation {
         }
         if(road.points.size()<2)throw std::runtime_error("Road needs two or more points");
         roads.push_back(std::move(road));
+      }
+    }
+    auto riverFile=std::filesystem::path(file).parent_path()/"rivers.json";
+    if(std::filesystem::exists(riverFile)){
+      auto data=readJson(riverFile.string());
+      for(auto& row:asArray(field(data,"rivers"))){
+        WorldRiver river;
+        river.name=string(row,"name");
+        double rank=number(row,"scalerank");
+        if(!std::isfinite(rank)||rank<0||rank>10||std::floor(rank)!=rank)throw std::runtime_error("Invalid river hierarchy");
+        river.scalerank=int(rank);
+        if(river.scalerank<0||river.scalerank>10||river.name.empty())throw std::runtime_error("Invalid river hierarchy");
+        for(auto& coord:asArray(field(row,"points"))){
+          auto& pair=asArray(coord);
+          if(pair.size()!=2)throw std::runtime_error("Invalid river coordinate");
+          Point point{asNumber(pair[0]),asNumber(pair[1])};
+          if(!std::isfinite(point.x)||!std::isfinite(point.y)||std::abs(point.x)>180||std::abs(point.y)>90)throw std::runtime_error("Invalid river coordinate");
+          river.points.push_back(point);
+        }
+        if(river.points.size()<2)throw std::runtime_error("River needs two or more points");
+        rivers.push_back(std::move(river));
       }
     }
     rebuildRoadIndex();
@@ -347,13 +378,31 @@ namespace escalation {
   }
   int World::canonical(int nation) const {
     if(nation<0||nation>=int(countries.size()))return -1;
-    for(int depth=0;depth<8&&countries[nation].group>=0;++depth)nation=countries[nation].group;
+    for(size_t depth=0;depth<countries.size()&&countries[nation].group>=0;++depth)nation=countries[nation].group;
     return nation;
   }
   void World::applyGroups(const std::string& file){
     auto mapping=field(readJson(file),"groups").get<Object>();
-    for(auto& [from,to]:mapping){int child=find(from),parent=find(to.get<std::string>());if(child<0||parent<0||child==parent)throw std::runtime_error("Invalid nation group");countries[child].group=parent;}
-    for(size_t i=0;i<countries.size();++i){int parent=canonical(int(i));if(parent==int(i))continue;auto& source=countries[i];auto& target=countries[parent];target.polygons.insert(target.polygons.end(),source.polygons.begin(),source.polygons.end());target.triangles.insert(target.triangles.end(),source.triangles.begin(),source.triangles.end());source.triangles.clear();target.population+=source.population;target.gdp+=source.gdp;target.name+=" + "+source.name;target.neighbours.insert(target.neighbours.end(),source.neighbours.begin(),source.neighbours.end());}
+    std::vector<int> parents(countries.size(),-1);
+    for(auto& [from,to]:mapping){
+      int child=find(from),parent=find(to.get<std::string>());
+      if(child<0||parent<0||child==parent)throw std::runtime_error("Invalid nation group");
+      parents[child]=parent;
+    }
+    for(size_t i=0;i<parents.size();++i){
+      int current=int(i);
+      for(size_t depth=0;parents[current]>=0;++depth){
+        if(depth>=parents.size())throw std::runtime_error("Cyclic nation group");
+        current=parents[current];
+      }
+    }
+    // Reapplying a loaded group map must not duplicate geometry or population.
+    if(std::any_of(countries.begin(),countries.end(),[](const Country& c){return c.group>=0;})){
+      for(size_t i=0;i<parents.size();++i)if(parents[i]!=countries[i].group)throw std::runtime_error("Reload world before changing nation groups");
+      return;
+    }
+    for(size_t i=0;i<parents.size();++i)countries[i].group=parents[i];
+    for(size_t i=0;i<countries.size();++i){int parent=canonical(int(i));if(parent==int(i))continue;auto& source=countries[i];auto& target=countries[parent];target.polygons.insert(target.polygons.end(),source.polygons.begin(),source.polygons.end());target.triangles.insert(target.triangles.end(),source.triangles.begin(),source.triangles.end());source.triangles.clear();target.population+=source.population;target.gdp+=source.gdp;target.neighbours.insert(target.neighbours.end(),source.neighbours.begin(),source.neighbours.end());}
     for(size_t i=0;i<countries.size();++i){auto& ns=countries[i].neighbours;std::vector<int> grouped;for(int n:ns){int root=canonical(n);if(root!=canonical(int(i)))grouped.push_back(root);}std::sort(grouped.begin(),grouped.end());grouped.erase(std::unique(grouped.begin(),grouped.end()),grouped.end());ns=std::move(grouped);}
   }
 

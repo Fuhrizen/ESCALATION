@@ -15,3 +15,9 @@ The four implementation segments run concurrently after contracts are agreed. Th
 ## Reference fidelity
 
 This change implements the requested foundation with original code and numerical tuning. Public publisher diaries verify map-level command, regional GDP/cities, zoom-dependent information and investment in military technology. They do not provide a complete technology tree, build catalog or internal numerical formulas. Exact 1:1 feature/balance parity is not claimed. Air missions, equipment loadouts, radar detection/fog, interception, diplomacy, carriers and full-world simultaneous AI remain further work.
+
+## Pacing and command redesign (0.4)
+
+Primary-source research and a concrete interaction brief preceded development. Separate developers owned tactical stats/movement, core fabrication/research, camera/docked command surfaces, and geography; the root owned shared vector assets and map rendering. Independent reviewers identified and corrected weapon-radius town recapture, FIFO carryover/ETA eligibility, gesture ownership/modal cancellation and cramped/duplicated UI. Integration added native ImGui event tests and multiple-resolution OpenGL screenshot checks.
+
+Shared `UnitStats`, geodesic ranges, construction inventory APIs, completion estimates and predictable dock fields were agreed before implementation. Camera and geography could run independently. Combat/UI range previews depended on shared stats; construction/graph UI depended on fabrication/ETA contracts. Final rendering, save migration checks and publication follow all segment reviews.

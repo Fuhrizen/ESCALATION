@@ -33,11 +33,20 @@ namespace escalation {
   };
   struct WorldRoad {
     std::vector<Point> points;
+    int scalerank=4;
+    std::string type,name;
+  };
+  // Decorative geography only; rivers never affect movement or combat.
+  struct WorldRiver {
+    std::vector<Point> points;
+    int scalerank=0;
+    std::string name;
   };
   class World {
     public: std::vector<Country> countries;
     std::vector<WorldCity> cities;
     std::vector<WorldRoad> roads;
+    std::vector<WorldRiver> rivers;
     void load(const std::string& file,const std::string& histories="");
     // Conservative candidates for a local geographic radius (degrees). The
     // longitude extent uses cos(latitude), clamped to 0.2 near the poles.

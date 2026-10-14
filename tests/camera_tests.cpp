@@ -35,6 +35,17 @@ int main(){
     auto outside=c.unproject({c.x,c.y});
     if(outside)throw std::runtime_error("Outside globe must not select");
     auto require=[&](bool value,const char* message){if(!value)throw std::runtime_error(message);++checks;};
+    MapGesture gesture;
+    gesture.begin({400,250});gesture.observe({402,251});
+    require(gesture.click(5),"Ordinary map click must tolerate small pointer jitter");
+    // The excursion can cross a dock and return before the release frame.
+    gesture.observe({1000,250});gesture.observe({400,250});
+    require(gesture.dragged(5)&&!gesture.click(5),"A pan returning to its start must not issue a right-click order");
+    require(gesture.dragged(8)&&!gesture.click(8),"A selection drag returning to its start must not select or place a building");
+    gesture.cancel();gesture.observe({401,250});
+    require(!gesture.active&&!gesture.click(8),"A modal or focus loss must cancel release actions");
+    gesture.begin({400,250});gesture.observe({401,250});
+    require(gesture.click(5),"A fresh map press after cancellation must behave normally");
     Camera smooth=c;
     smooth.longitude=0;smooth.latitude=0;
     CameraMotion motion;
@@ -43,6 +54,13 @@ int main(){
     require(smooth.longitude>0&&smooth.longitude<20,"Pan must ease instead of snapping");
     for(int frame=0;frame<120;++frame)motion.advance(smooth,1.0/60);
     require(std::abs(smooth.longitude-20)<1e-7&&std::abs(smooth.latitude-10)<1e-7,"Pan must converge to its target");
+    Camera tracking=c;tracking.longitude=tracking.latitude=0;
+    CameraMotion drag;drag.drag(tracking,{10,5});
+    require(std::abs(tracking.longitude-8.8)<1e-9&&std::abs(tracking.latitude-4.4)<1e-9,"Drag must apply 88 percent immediately for direct cursor tracking");
+    for(int frame=0;frame<90;++frame)drag.advance(tracking,1.0/60);
+    require(std::abs(tracking.longitude-10)<1e-9&&std::abs(tracking.latitude-5)<1e-9,"Residual drag must preserve total motion without runaway inertia");
+    drag.directPan(tracking,{5,0});
+    require(std::abs(tracking.longitude-15)<1e-9,"Keyboard motion must apply immediately");
     Camera a=c,b=c;
     a.longitude=b.longitude=0;a.latitude=b.latitude=0;
     CameraMotion ma,mb;ma.pan({20,10});mb.pan({20,10});

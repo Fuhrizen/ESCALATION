@@ -23,6 +23,6 @@ for source, output in [('tests/core_tests.cpp', 'escalation_tests'), ('tests/tac
     extra = ['src/renderer.cpp', 'src/assets.cpp'] if 'camera' in output else []
     if args.sanitize:
         extra += ['tests/sanitizer_options.cpp']
-    subprocess.run([compiler, *flags, *includes, 'src/world.cpp', 'src/simulation.cpp', 'src/simulation_actions.cpp', 'src/combat.cpp', source, *extra, '-o', str(executable)], cwd=root, check=True)
+    subprocess.run([compiler, *flags, *includes, 'src/world.cpp', 'src/simulation.cpp', 'src/simulation_actions.cpp', 'src/unit_movement.cpp', 'src/unit_stats.cpp', 'src/combat.cpp', source, *extra, '-o', str(executable)], cwd=root, env=env, check=True)
     parameters = [] if 'tests' in output else ['FRA', '49275']
     subprocess.run([str(executable), *parameters], cwd=root, env=env, check=True)

@@ -1,6 +1,6 @@
 # Native application screenshots
 
-Captured from the running version-0.3 OpenGL application using Linux EGL smoke mode. These are functional UI screens, not mockups.
+Captured from the running version-0.4 OpenGL application using Linux EGL smoke mode. These are functional UI screens, not mockups.
 
 ## Main menu
 
@@ -18,13 +18,13 @@ Captured from the running version-0.3 OpenGL application using Linux EGL smoke m
 
 ![Map-first HUD and visible forces](map.png)
 
-## Connected research tree
+## Branching research canvas
 
-![Connected research tree](research.png)
+![Branching research canvas](research.png)
 
-## Map construction catalogue
+## Fabrication catalog
 
-![Map construction catalogue](industry.png)
+![Fabrication catalog](industry.png)
 
 ## Regional settlement control
 
@@ -34,10 +34,24 @@ Captured from the running version-0.3 OpenGL application using Linux EGL smoke m
 
 ![Forces and strategic weapons](forces.png)
 
-## Close-up unit command at 64× zoom
+## Docked unit command at 64× zoom
 
-![Close-up unit command at 64× zoom](units.png)
+![Docked unit command at 64× zoom](units.png)
 
 ## Imported roads, cities and dynamic frontline
 
 ![Imported roads, cities and dynamic frontline](frontline.png)
+
+## Pause and display options
+
+![Pause and display options](options.png)
+
+## Fabrication queue and ready inventory counts
+
+![Fabrication and inventory](inventory.png)
+
+## Ready building placement preview
+
+![Ready placement](placement.png)
+
+Screens were captured from the native client at 1920×1080; the 1280×720, 125% scale layout was also rendered and inspected.

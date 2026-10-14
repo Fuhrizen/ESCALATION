@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 namespace escalation {
+  constexpr double simulationTickSeconds=0.25;
+  double distanceKm(Point a,Point b);
   enum class Resource {
     Ore,Oil,Steel,Fuel,Supplies,Equipment,Warheads,Count
   };
@@ -29,6 +31,9 @@ namespace escalation {
     std::vector<Point> waypoints;
     bool moving=false;
   };
+  struct UnitStats { double speedKmPerSecond,rangeKm,damagePerSecond; };
+  UnitStats unitStats(UnitType type);
+  bool canEngage(UnitType attacker,UnitType defender);
   struct Tech {
     std::string id,name,effect;
     Field field;
@@ -57,6 +62,10 @@ namespace escalation {
     double capacity=8;
     bool enabled=true;
   };
+  struct BuildingJob {
+    Facility type=Facility::Factory;
+    double progress=0,total=0;
+  };
   struct ResearchJob {
     int tech=0;
     double progress=0,cost=0;
@@ -83,6 +92,8 @@ namespace escalation {
     std::vector<Route> routes;
     std::vector<bool> completed;
     std::deque<ResearchJob> research;
+    std::deque<BuildingJob> buildingQueue;
+    std::array<int,16> buildingInventory{};
     std::deque<std::string> events;
     double outputRate=0,productionRate=0,researchRate=0,power=0,powerDemand=0,income=0,upkeep=0;
     int warheadsQueued=0;
@@ -93,6 +104,11 @@ namespace escalation {
     const World* world_;
     void log(const std::string& text);
     void economy(bool advance=true);
+    bool productionSiteActive(const Site& site) const;
+    bool productionUnitActive(const Unit& unit) const;
+    bool strategicProductionActive() const;
+    double prospectiveResearchRate() const;
+    double prospectiveProductionRate() const;
     void researchTick();
     void combat();
     void unitsTick();
@@ -107,6 +123,14 @@ namespace escalation {
     }
     double connection(int region) const;
     double researchCost(int tech) const;
+    double researchETA(int tech) const;
+    double buildingETA(Facility type) const;
+    double buildingETA(size_t queueIndex) const;
+    double unitETA(size_t index) const;
+    double unitBuildETA(UnitType type,int site) const;
+    double unitSpeedKmPerSecond(const Unit& unit) const;
+    double unitRangeKm(const Unit& unit) const;
+    int mainSettlement(int region) const;
     double frontlinePressure(Point position) const;
     double roadMovementBonus(Point position) const;
     bool available(int tech) const;
@@ -115,6 +139,11 @@ namespace escalation {
     void removeResearch(size_t index);
     double buildCost(Facility type) const;
     std::string buildReason(int region,Facility type) const;
+    std::string buildingQueueReason(Facility type) const;
+    bool queueBuilding(Facility type);
+    bool cancelBuilding(size_t index);
+    std::string placementReason(Facility type,int region,Point position) const;
+    bool placeBuilding(Facility type,int region,Point position);
     bool build(int region,Facility type);
     bool buildAt(int region,Facility type,Point position);
     int regionAt(Point position) const;

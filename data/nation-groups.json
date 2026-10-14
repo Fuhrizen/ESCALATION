@@ -1,4 +1,27 @@
 {
-  "description": "Gameplay-only compact territory groups; not a historical or diplomatic border dataset.",
-  "groups": {"LUX":"BEL", "CYN":"CYP", "SOL":"SOM", "BRN":"MYS", "TLS":"IDN", "GMB":"SEN"}
+  "description": "Gameplay-only compact territory groups, not historical or diplomatic borders. Map records, settlement country codes and original borders retain their source identities.",
+  "selection": "Explicit compact territories with reference population <= 2.5 million are assigned to a touching larger neighbor; small island groups use a nearby regional neighbor. Disputed map records CYN and SOL join their encompassing map country. Large-area sparsely populated nations and remote islands stay playable. No runtime population threshold silently changes the roster.",
+  "groups": {
+    "LUX": "BEL",
+    "CYN": "CYP",
+    "SOL": "SOM",
+    "BRN": "MYS",
+    "TLS": "IDN",
+    "GMB": "SEN",
+    "LSO": "ZAF",
+    "SWZ": "ZAF",
+    "BLZ": "MEX",
+    "GNB": "SEN",
+    "GNQ": "CMR",
+    "BTN": "IND",
+    "LVA": "LTU",
+    "EST": "LVA",
+    "SVN": "HRV",
+    "MNE": "SRB",
+    "KOS": "SRB",
+    "MKD": "BGR",
+    "DJI": "ETH",
+    "BHS": "CUB",
+    "TTO": "VEN"
+  }
 }

@@ -144,7 +144,7 @@ namespace escalation {
       for(const auto& city:state.settlements)if(city.region==int(region))hasCity=true;
       if(!hasCity)state.settlements.push_back({"Strategic objective "+std::to_string(region+1),state.regions[region].center,0,int(region),state.regions[region].owner,0});
     }
-    log("Command established. Allocate regional output between research and military production.");
+    log("Command established. Set the balance between research and construction.");
     if(world_->countries[nation].neighbours.empty())log("Island start: nearest nation is a maritime rival. Naval research and a supplied shipyard enable a landing.");
     economy(false);
     state.delta.fill(0);
@@ -156,6 +156,58 @@ namespace escalation {
     if(tech<0||tech>=int(techs.size()))return 1e30;
     double ahead=std::max(0,techs[tech].year-year());
     return techs[tech].cost*(1+0.12*ahead+0.002*ahead*ahead);
+  }
+  bool Simulation::productionSiteActive(const Site& site) const {
+    return !site.destroyed&&site.enabled&&site.remaining>0&&site.region>=0&&site.region<int(state.regions.size())&&state.regions[site.region].owner==state.player;
+  }
+  bool Simulation::productionUnitActive(const Unit& unit) const {
+    if(unit.owner!=state.player||unit.health<=0||unit.remaining<=0||unit.sourceSite<0||unit.sourceSite>=int(state.sites.size()))return false;
+    const auto& source=state.sites[unit.sourceSite];return !source.destroyed&&source.enabled&&source.remaining<=0&&state.regions[source.region].owner==state.player;
+  }
+  bool Simulation::strategicProductionActive() const {
+    if(state.warheadsQueued<=0)return false;
+    bool factory=false,lab=false;for(const auto& site:state.sites)if(!site.destroyed&&site.enabled&&site.remaining<=0&&state.regions[site.region].owner==state.player){factory|=site.type==Facility::Factory;lab|=site.type==Facility::Laboratory;}return factory&&lab;
+  }
+  double Simulation::prospectiveProductionRate() const {
+    bool lab=false;for(const auto& site:state.sites)if(site.type==Facility::Laboratory&&!site.destroyed&&site.enabled&&site.remaining<=0&&state.regions[site.region].owner==state.player)lab=true;
+    return state.outputRate*((!state.research.empty()&&lab)?1-state.researchBudget:1);
+  }
+  double Simulation::prospectiveResearchRate() const {
+    double labs=0;for(const auto& site:state.sites)if(site.type==Facility::Laboratory&&!site.destroyed&&site.enabled&&site.remaining<=0&&state.regions[site.region].owner==state.player)++labs;
+    bool producing=!state.buildingQueue.empty()||strategicProductionActive();for(const auto& site:state.sites)producing|=productionSiteActive(site);for(const auto& unit:state.units)producing|=productionUnitActive(unit);
+    return labs>0?state.outputRate*(producing?state.researchBudget:1)*(1+0.08*labs)*(1+0.08*state.levels[6]):0;
+  }
+  double Simulation::researchETA(int tech) const {
+    if(tech<0||tech>=int(techs.size()))return std::numeric_limits<double>::infinity();
+    if(state.completed[tech])return 0;
+    double rate=prospectiveResearchRate();
+    if(rate<=0)return std::numeric_limits<double>::infinity();
+    double seconds=0;
+    for(const auto& job:state.research){seconds+=(job.cost-job.progress)/(rate*0.4*(techs[job.tech].field==state.specialization?1.35:1));if(job.tech==tech)return seconds;}
+    return seconds+researchCost(tech)/(rate*0.4*(techs[tech].field==state.specialization?1.35:1));
+  }
+  double Simulation::buildingETA(size_t index) const {
+    if(index>=state.buildingQueue.size()||state.productionRate<=0)return std::numeric_limits<double>::infinity();
+    double pending=0;for(size_t i=0;i<=index;++i)pending+=state.buildingQueue[i].total-state.buildingQueue[i].progress;
+    double parallel=0;for(const auto& site:state.sites)if(productionSiteActive(site))parallel+=std::min(site.remaining,pending);for(const auto& unit:state.units)if(productionUnitActive(unit))parallel+=std::min(unit.remaining,pending);
+    if(strategicProductionActive())parallel+=std::min(state.warheadWork+1200*(state.warheadsQueued-1),pending);
+    return (pending+parallel)/(state.productionRate*0.1);
+  }
+  double Simulation::buildingETA(Facility type) const {
+    double rate=prospectiveProductionRate();if(rate<=0)return std::numeric_limits<double>::infinity();
+    double pending=buildCost(type);for(const auto& job:state.buildingQueue)pending+=job.total-job.progress;
+    double parallel=0;for(const auto& site:state.sites)if(productionSiteActive(site))parallel+=std::min(site.remaining,pending);for(const auto& unit:state.units)if(productionUnitActive(unit))parallel+=std::min(unit.remaining,pending);
+    if(strategicProductionActive())parallel+=std::min(state.warheadWork+1200*(state.warheadsQueued-1),pending);
+    return (pending+parallel)/(rate*0.1);
+  }
+  double Simulation::unitETA(size_t index) const {
+    if(index>=state.units.size())return std::numeric_limits<double>::infinity();
+    const auto& target=state.units[index];if(target.remaining<=0)return 0;
+    if(state.productionRate<=0||!productionUnitActive(target))return std::numeric_limits<double>::infinity();
+    double pending=target.remaining;for(const auto& site:state.sites)if(productionSiteActive(site))pending+=std::min(site.remaining,target.remaining);for(size_t i=0;i<state.units.size();++i)if(i!=index&&productionUnitActive(state.units[i]))pending+=std::min(state.units[i].remaining,target.remaining);
+    double buildings=0;for(const auto& job:state.buildingQueue)buildings+=job.total-job.progress;pending+=std::min(buildings,target.remaining);
+    if(strategicProductionActive())pending+=std::min(state.warheadWork+1200*(state.warheadsQueued-1),target.remaining);
+    return pending/(state.productionRate*0.1);
   }
   std::string Simulation::lockReason(int tech) const {
     if(tech<0||tech>=int(techs.size()))return "Invalid technology";
@@ -172,10 +224,11 @@ namespace escalation {
     if(!available(tech)||state.research.size()>=12)return false;
     state.research.push_back({tech,0,researchCost(tech)});
     log("Queued research: "+techs[tech].name);
+    economy(false);
     return true;
   }
   void Simulation::removeResearch(size_t index){
-    if(index<state.research.size())state.research.erase(state.research.begin()+std::ptrdiff_t(index));
+    if(index<state.research.size()){state.research.erase(state.research.begin()+std::ptrdiff_t(index));economy(false);}
   }
   static bool activeFacility(Facility f){
     return f==Facility::Factory||f==Facility::Laboratory||f==Facility::Depot||f==Facility::Shipyard||f==Facility::Silo||f==Facility::ArmyBase||f==Facility::Airbase||f==Facility::Radar||f==Facility::IndustrialPark;
@@ -198,12 +251,35 @@ namespace escalation {
     if(count>=8)return "Region has reached its building capacity";
     return "";
   }
-  bool Simulation::build(int region,Facility type){
-    if(!buildReason(region,type).empty())return false;
-    state.sites.push_back({region,type,buildCost(type),0,true});
-    state.sites.back().position=state.regions[region].center;
-    log(std::string("Construction queued: ")+facilityNames[int(type)]);
+  std::string Simulation::buildingQueueReason(Facility type) const {
+    if(state.player<0||state.victory||state.defeat)return "No active campaign";
+    if(!activeFacility(type))return "Retired economic facility";
+    if(state.buildingQueue.size()>=64)return "Construction queue is full";
+    int reserved=state.buildingInventory[int(type)];for(const auto& job:state.buildingQueue)if(job.type==type)++reserved;
+    if(reserved>=1000)return "Ready inventory is full";
+    if(type==Facility::Airbase&&state.levels[1]<1)return "Requires Biplane reconnaissance";
+    if(type==Facility::Radar&&state.levels[1]<2)return "Requires Monoplane fighters";
+    if(type==Facility::Shipyard&&state.levels[2]<1)return "Requires Fleet logistics";
+    if(type==Facility::Silo&&state.levels[4]<2)return "Requires Liquid fuel rockets";
+    return "";
+  }
+  bool Simulation::queueBuilding(Facility type){
+    if(!buildingQueueReason(type).empty())return false;
+    state.buildingQueue.push_back({type,0,buildCost(type)});
+    log(std::string("Manufacture queued: ")+facilityNames[int(type)]);
+    economy(false);
     return true;
+  }
+  bool Simulation::cancelBuilding(size_t index){
+    if(index>=state.buildingQueue.size())return false;
+    state.buildingQueue.erase(state.buildingQueue.begin()+std::ptrdiff_t(index));
+    log("Manufacture cancelled; capacity redirected");
+    economy(false);
+    return true;
+  }
+  bool Simulation::build(int region,Facility type){
+    if(region<0||region>=int(state.regions.size()))return false;
+    return placeBuilding(type,region,state.regions[region].center);
   }
   double Simulation::buildingIncome(Facility type) const { return type==Facility::Factory?2:type==Facility::IndustrialPark?3:0; }
   double Simulation::regionIncome(int region) const {
@@ -228,19 +304,18 @@ namespace escalation {
     state.income=state.upkeep=state.power=state.powerDemand=0;
     state.money=0;state.delta.fill(0);
     for(size_t i=0;i<state.regions.size();++i)if(state.regions[i].owner==state.player)state.outputRate+=regionIncome(int(i));
-    double labs=0;bool factory=false;
+    double labs=0;
     for(auto& site:state.sites){
       site.efficiency=0;
-      if(!site.destroyed&&site.enabled&&site.remaining<=0&&state.regions[site.region].owner==state.player){site.efficiency=1;if(site.type==Facility::Laboratory)labs+=1;if(site.type==Facility::Factory)factory=true;}
+      if(!site.destroyed&&site.enabled&&site.remaining<=0&&state.regions[site.region].owner==state.player){site.efficiency=1;if(site.type==Facility::Laboratory)labs+=1;}
     }
     std::vector<double*> jobs;
-    for(auto& site:state.sites)if(!site.destroyed&&site.enabled&&site.remaining>0&&state.regions[site.region].owner==state.player)jobs.push_back(&site.remaining);
-    for(auto& unit:state.units)if(unit.owner==state.player&&unit.health>0&&unit.remaining>0&&unit.sourceSite>=0&&unit.sourceSite<int(state.sites.size())){
-      const auto& source=state.sites[unit.sourceSite];
-      if(!source.destroyed&&source.enabled&&source.remaining<=0&&state.regions[source.region].owner==state.player)jobs.push_back(&unit.remaining);
-    }
-    bool warheadProduction=state.warheadsQueued>0&&factory&&labs>0;
+    for(auto& site:state.sites)if(productionSiteActive(site))jobs.push_back(&site.remaining);
+    for(auto& unit:state.units)if(productionUnitActive(unit))jobs.push_back(&unit.remaining);
+    bool warheadProduction=strategicProductionActive();
     if(warheadProduction)jobs.push_back(&state.warheadWork);
+    double buildingRemaining=state.buildingQueue.empty()?0:state.buildingQueue.front().total-state.buildingQueue.front().progress;
+    if(!state.buildingQueue.empty())jobs.push_back(&buildingRemaining);
     bool researching=!state.research.empty()&&labs>0;
     double fraction=std::clamp(state.researchBudget,0.0,1.0);
     if(!researching)fraction=0;
@@ -249,25 +324,42 @@ namespace escalation {
     state.researchRate=researching?state.outputRate*fraction*(1+0.08*labs)*(1+0.08*state.levels[6]):0;
     state.productionRate=state.outputRate*(1-fraction);
     if(!advance)return;
-    double remaining=state.productionRate;
+    double remaining=state.productionRate*simulationTickSeconds*0.1;
     while(!jobs.empty()&&remaining>1e-9){
-      double share=remaining/jobs.size(),spent=0;
-      for(double* work:jobs){double amount=std::min(*work,share);*work-=amount;spent+=amount;}
-      remaining-=spent;
+      // Advance all active streams to the next completion, then start the next
+      // FIFO item before redistributing the remaining national capacity.
+      double share=remaining/jobs.size();
+      for(double* work:jobs)share=std::min(share,*work);
+      for(double* work:jobs)*work-=share;
+      remaining-=share*jobs.size();
       jobs.erase(std::remove_if(jobs.begin(),jobs.end(),[](double* work){return *work<=1e-9;}),jobs.end());
-      if(spent<=1e-9)break;
-    }
-    if(warheadProduction&&state.warheadWork<=1e-9){
-      state.stock[int(Resource::Warheads)]+=1;--state.warheadsQueued;
-      state.warheadWork=state.warheadsQueued>0?1200:0;
-      log("Strategic warhead production complete");
+      if(!state.buildingQueue.empty()){
+        auto& building=state.buildingQueue.front();
+        building.progress=std::clamp(building.total-buildingRemaining,0.0,building.total);
+        if(buildingRemaining<=1e-9){
+          ++state.buildingInventory[int(building.type)];
+          log(std::string("Ready to place: ")+facilityNames[int(building.type)]);
+          state.buildingQueue.pop_front();
+          if(!state.buildingQueue.empty()){
+            buildingRemaining=state.buildingQueue.front().total-state.buildingQueue.front().progress;
+            jobs.push_back(&buildingRemaining);
+          }
+        }
+      }
+      if(warheadProduction&&state.warheadsQueued>0&&state.warheadWork<=1e-9){
+        state.stock[int(Resource::Warheads)]+=1;--state.warheadsQueued;
+        state.warheadWork=state.warheadsQueued>0?1200:0;
+        log("Strategic warhead production complete");
+        if(state.warheadsQueued>0)jobs.push_back(&state.warheadWork);
+      }
+      if(share<=1e-9&&jobs.empty())break;
     }
   }
   void Simulation::researchTick(){
     if(state.research.empty())return;
     auto& j=state.research.front();
     auto& t=techs[j.tech];
-    j.progress+=state.researchRate*(t.field==state.specialization?1.35:1);
+    j.progress=std::min(j.cost,j.progress+state.researchRate*simulationTickSeconds*0.4*(t.field==state.specialization?1.35:1));
     if(j.progress>=j.cost){
       state.completed[j.tech]=true;
       state.levels[int(t.field)]=std::max(state.levels[int(t.field)],t.tier+1);
@@ -291,7 +383,7 @@ namespace escalation {
     for(const auto& site:state.sites)if(!site.destroyed&&site.enabled&&site.remaining<=0&&state.regions[site.region].owner==state.player){factory|=site.type==Facility::Factory;lab|=site.type==Facility::Laboratory;}
     if(!factory||!lab)return false;
     if(state.warheadsQueued++==0)state.warheadWork=1200;
-    log("Strategic warhead queued: 1,200 shared production work");
+    log("Strategic warhead manufacture queued");
     return true;
   }
   bool Simulation::launchNuclear(int region){
@@ -314,7 +406,7 @@ namespace escalation {
     auto n=[&](const char* k,double v){
       o[k]=num(v);
     };
-    n("version",3);
+    n("version",4);
     n("simple",state.simpleEconomy);
     o["player"]=str(world_->countries[state.player].code);
     o["enemy"]=str(world_->countries[state.enemy].code);
@@ -360,6 +452,10 @@ namespace escalation {
       sites.push_back(Json(v));
     }
     o["sites"]=Json(sites);
+    Array buildings;
+    for(const auto& job:state.buildingQueue){Object v;v["type"]=num(int(job.type));v["progress"]=num(job.progress);v["total"]=num(job.total);buildings.push_back(Json(v));}
+    o["buildingQueue"]=Json(buildings);
+    Array ready;for(int count:state.buildingInventory)ready.push_back(num(count));o["buildingInventory"]=Json(ready);
     Array units;for(auto& u:state.units){Object v;v["owner"]=str(world_->countries[u.owner].code);v["region"]=num(u.region);v["target"]=num(u.target);v["source"]=num(u.sourceSite);v["type"]=num(int(u.type));v["x"]=num(u.position.x);v["y"]=num(u.position.y);v["dx"]=num(u.destination.x);v["dy"]=num(u.destination.y);v["health"]=num(u.health);v["remaining"]=num(u.remaining);v["total"]=num(u.total);v["moving"]=num(u.moving);Array path;for(int r:u.path)path.push_back(num(r));v["path"]=Json(path);Array waypoints;for(Point p:u.waypoints){Array xy{num(p.x),num(p.y)};waypoints.push_back(Json(xy));}v["waypoints"]=Json(waypoints);units.push_back(Json(v));}o["units"]=Json(units);
     Array routes;
     for(auto& r:state.routes){
@@ -419,7 +515,7 @@ namespace escalation {
       if(std::floor(v)!=v)throw std::runtime_error("Non-integral save index");
       return int(v);
     };
-    int version=integer(o,"version",1,3);
+    int version=integer(o,"version",1,4);
     int player=world_->find(string(o,"player")),enemy=world_->find(string(o,"enemy"));
     Simulation candidate(*world_);
     candidate.start(player,Field(integer(o,"focus",0,7)),version>=2?bool(integer(o,"simple",0,1)):false);
@@ -481,6 +577,13 @@ namespace escalation {
     auto& sites=asArray(field(o,"sites"));
     if(sites.size()>1000)throw std::runtime_error("Too many sites");
     for(auto& s:sites){Site site{integer(s,"region",0,int(c.regions.size())-1),Facility(integer(s,"type",0,version>=2?15:9)),bounded(s,"remaining",0,120000),0,bool(integer(s,"enabled",0,1))};site.position=version>=2?Point{bounded(s,"x",-720,720),bounded(s,"y",-90,90)}:c.regions[site.region].center;site.destroyed=version>=2?bool(integer(s,"destroyed",0,1)):false;c.sites.push_back(site);}
+    if(version>=4){
+      const auto& buildings=asArray(field(o,"buildingQueue"));
+      if(buildings.size()>64)throw std::runtime_error("Construction queue too long");
+      for(const auto& v:buildings){Facility type=Facility(integer(v,"type",0,15));if(!activeFacility(type))throw std::runtime_error("Invalid building type");double total=bounded(v,"total",candidate.buildCost(type),candidate.buildCost(type));c.buildingQueue.push_back({type,bounded(v,"progress",0,total),total});}
+      const auto& ready=asArray(field(o,"buildingInventory"));if(ready.size()!=16)throw std::runtime_error("Invalid ready inventory");
+      for(int i=0;i<16;++i){double count=asNumber(ready[i]);if(!std::isfinite(count)||count<0||count>1000||std::floor(count)!=count||(!activeFacility(Facility(i))&&count))throw std::runtime_error("Invalid ready building count");c.buildingInventory[i]=int(count);int reserved=int(count);for(const auto& job:c.buildingQueue)if(int(job.type)==i)++reserved;if(reserved>1000)throw std::runtime_error("Too many reserved buildings");}
+    }
     if(version>=2){
       c.units.clear();
       const auto& units=asArray(field(o,"units"));
@@ -551,6 +654,17 @@ namespace escalation {
       for(auto& site:c.sites){if(!activeFacility(site.type)){site.destroyed=true;site.enabled=false;}else if(site.remaining>0)site.remaining=candidate.buildCost(site.type)*std::clamp(site.remaining/(site.type==Facility::Silo?120.0:35.0),0.0,1.0);}
       for(auto& unit:c.units)if(unit.remaining>0){double fraction=unit.total>0?unit.remaining/unit.total:1;unit.total=candidate.unitCost(unit.type);unit.remaining=unit.total*std::clamp(fraction,0.0,1.0);}
       candidate.log("Legacy save migrated to regional production and city objectives");
+    }
+    if(version<4){
+      // Keep historical site indices for unit producers; each unfinished foundation
+      // becomes one fabrication item, never a ready placement as well.
+      for(auto& site:c.sites)if(!site.destroyed&&site.remaining>0&&c.regions[site.region].owner==c.player&&activeFacility(site.type)){
+        double total=candidate.buildCost(site.type);
+        c.buildingQueue.push_back({site.type,total-std::clamp(site.remaining,0.0,total),total});
+        site.destroyed=true;site.enabled=false;site.remaining=0;
+      }
+      if(c.buildingQueue.size()>64)throw std::runtime_error("Legacy construction queue too long");
+      candidate.log("Construction migrated to manufacture and ready placement");
     }
     c.money=0;c.simpleEconomy=true;
     for(int i=0;i<int(Resource::Warheads);++i)c.stock[i]=0;

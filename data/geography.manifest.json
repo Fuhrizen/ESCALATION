@@ -6,19 +6,23 @@
   "source_base": "https://github.com/nvkelso/natural-earth-vector/tree/v5.1.2/geojson",
   "source_sha256": {
     "ne_10m_populated_places.geojson": "9b8e3de09048ef00dfc70357dbb9fa324493f214b5e0ae4daf1aa79a8d10116b",
-    "ne_10m_roads.geojson": "66a0c7b438e92fd124822cc5921cfa11042f48c294ade5e0f03f2c6640fd0248"
+    "ne_10m_roads.geojson": "66a0c7b438e92fd124822cc5921cfa11042f48c294ade5e0f03f2c6640fd0248",
+    "ne_10m_rivers_lake_centerlines.geojson": "bb854a900ecbd3b408df46d5e16e3e0f974ba55993f9d8b5c26e855273c0905a"
   },
   "output_sha256": {
     "settlements.json": "a796957af1d972e80dfe487caf5a3961340a843781c0ff6a5619f8e62b67f0e1",
-    "roads.json": "77e8df8eb4dc4193324a3a51805b2438145a6eef78f4bbbd371e1f656a0fc74f"
+    "roads.json": "316c19c42be7522cb9a86e27d134d8773c8e52db94f7656ceb4b3964a0d56fdb",
+    "rivers.json": "99c147107828b4ce6770eed04b38eae9410ff3a5c34de0f8eefc2577e438c81b"
   },
   "world_sha256": "9d15f8943e8fb49c6330d152961cc4d895bc30a0f19cc2c522eea5765ae43ded",
   "country_aliases": {
     "SSD": "SDS"
   },
   "cities": 4846,
-  "roads": 33989,
+  "roads": 15734,
+  "rivers": 600,
   "settlement_selection": "Per country: min(192, round(24+8*sqrt(population/1e6))); admin-1 coverage, then population; 0.25-degree spacing; capitals preserved",
-  "road_selection": "scalerank <= 7, ignore == 0; exclude ferry and track; simplify 0.02 degrees; round coordinates to 5 decimal places",
+  "road_selection": "scalerank <= 4, ignore == 0; exclude ferry and track; simplify 0.02 degrees; round coordinates to 5 decimal places",
+  "river_selection": "Named rivers and lake centerlines with scalerank <= 5; simplify 0.025 degrees; round to 5 decimals; decorative only",
   "limitations": "Modern reference data; incomplete strategic road and town coverage. Empty regions must not invent city names."
 }
