@@ -65,3 +65,9 @@ Save schema 6 persists Unit.deployed. Manufacturing jobs and completed ready uni
 The renderer samples a mipmapped packed surface atlas (relative elevation, illustrative coastal distance, land mask). `tools/prepare_surface.py` derives it from bundled height and country geometry; `data/assets.json` retains provenance. City and landmark geometry is original screen-projected isometric artwork, with detail fading by zoom. City selection uses campaign settlements first, then the global reference gazetteer.
 
 Naval technology IDs append after the stable 112 ground technologies. Ships use ocean routing and coastal shipyard production/deployment rather than land occupation. Weapon profiles drive targeting, separate range rings and inspection; stable weapon slots preserve ammunition through upgrades. Engagement records persist projectile travel and guided targeting. Save version 7 preserves weapon cooldowns, magazines, reserves, port service and in-flight engagements; previous ground saves extend their technology arrays.
+
+## 0.8.0 command and strike integration
+
+The camera covers the whole game surface; HUD hit regions protect the transparent header, left inspector and right controls. Map overlays clip below the header so geographic labels cannot overwrite command text. Point-targeting state belongs to App and cancels through Escape/right click; simulation APIs reject invalid launches without consuming rounds. Brief operation notifications expose validation feedback.
+
+The ownership contour combines signed distances to controlled campaign cells with army pressure, refreshed at 8 Hz and on camera/ownership changes. Planned routes preserve exact movement geometry while queued segments use screen-space dash cadence. Strategic sites create owner/source-indexed engagements with no unit defender index; ballistic height is presentation, while flight timers and area impacts are simulation state. Save version 8 persists impact lifetime and site reloads.

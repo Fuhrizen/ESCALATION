@@ -2,7 +2,7 @@
 
 A native C++17 / OpenGL 3.3 strategy prototype about building a nation before committing it to war. Inspired by the conventional/nuclear escalation of **ICBM: Escalation** and the map-led national management of **State of Command**, with original code and presentation.
 
-Version 0.7.0 adds naval warfare and richer geographic presentation to **readable command, deliberate combat pacing and manufacture-before-placement**. Units use shared kilometre-based capabilities; research and construction are controlled by a weight slider and completion estimates. Unit and building inspection uses paired bottom-right capability and selection boxes. Completed units and buildings appear in the permanent icon rail; circular controls open dedicated pages. Major roads, decorative rivers, proportional typography and original vector icons are bundled offline.
+Version 0.8.0 focuses on **readable command, actual missile flight and a stronger strategic foundation**. The reference HUD uses compact bottom-left inspection, a bottom-right play/speed dial, hexagonal page controls and ready inventory icons. Ground and naval formations use independent weapon channels with ranges, ammunition and target eligibility. Research and construction share a graphical weight slider. Ownership frontlines, complete queued paths, cities, major roads, decorative rivers and textured terrain are bundled offline.
 
 ![Native map and national command](docs/map.png)
 
@@ -89,7 +89,7 @@ A compiler-only validation path is also provided (see the validation record for 
 python3 tools/verify.py
 ```
 
-For Linux render smoke tests without a desktop, install `libegl1 libgl1-mesa-dri`, build with `-DESCALATION_NULL_PLATFORM=ON`, and run `ctest`. This creates an actual EGL OpenGL context, renders seventeen UI/projection states and checks GL errors. The normal desktop build can also run `./build/escalation --smoke build/smoke`. PPM screenshots are generated locally, not published as releases.
+For Linux render smoke tests without a desktop, install `libegl1 libgl1-mesa-dri`, build with `-DESCALATION_NULL_PLATFORM=ON`, and run `ctest`. This creates an actual EGL OpenGL context, renders twenty UI/projection states and checks GL errors. The normal desktop build can also run `./build/escalation --smoke build/smoke`. PPM screenshots are generated locally, not published as releases.
 
 ## First campaign
 
@@ -168,3 +168,13 @@ The world surface now blends public-domain elevation, latitude, coastal shelves 
 Naval research unlocks shipyards, destroyers, submarines and distinct weapon upgrades. Completed ships deploy beside a friendly operational shipyard and follow ocean routes with queued orders and arrival estimates. Return to shipyard repairs and rearms after 30 uninterrupted seconds nearby while disengaged. Ships do not occupy land objectives.
 
 Each weapon has its own target types, minimum/maximum range, damage, cooldown, magazine and reserves. Guns, anti-ship missiles, ASW weapons, torpedoes and cruise missiles can serve different targets on one platform. Guided projectiles follow their target; artillery shells retain their aimed impact point. Inspection shows each weapon and matching range circles. Aircraft, carriers, amphibious transports, sonar detection and interception remain future work. See [reference and design decisions](docs/ICBM_NAVAL_MAP.md).
+
+### Command and strike foundation (0.8.0)
+
+The HUD now follows the supplied ICBM: Escalation references: compact bottom-left inspection, a bottom-right play/speed dial and hexagonal page controls, slim ready icons, and research/production queues beside the branching research workspace. Unit models remain NATO counters. Attack orders, launch rejection reasons and placement results appear as brief map notifications.
+
+The frontline follows controlling territory and bends under nearby army pressure, with separate national-colored tracks and facing ticks. Active movement paths show committed waypoints; queued paths use consistent dashes, numbered destinations and total arrival estimates.
+
+Ground groups have larger operational engagement envelopes. Artillery, tactical missiles and researched submarine cruise weapons can strike a ground point. Operational missile sites can launch conventional ballistic strikes; confirmed nuclear launches travel to their target and resolve blast damage instead of instantly ending the campaign. Ammunition, cooldowns, minimum ranges, eligibility and saved in-flight/impact state remain explicit. See [missile behavior and tuning](docs/MISSILE_SYSTEMS.md).
+
+Terrain adds original zoom-filtered woodland, agricultural, desert and mountain surface detail. The supplied AssetLib was inspected as visual reference; commercial game assets without redistribution terms were not bundled. These are geographic elevation plus procedural textures, not satellite imagery. Full reference-game systems such as detection, interception, automatic nuclear retaliation and fallout remain future work.

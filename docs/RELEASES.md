@@ -6,7 +6,7 @@ Versions use `X.y.z`:
 - `y` increases for new features or systems, retaining `X` and resetting `z` to zero.
 - `z` increases for corrections to existing behavior, retaining `X.y`.
 
-The current version is **0.7.0**, adding geographic presentation, naval platforms and independent weapon channels. No major change is authorized, and it does not produce automated release packages. Keep `VERSION` and the `project(... VERSION ...)` value in `CMakeLists.txt` identical. Local `build.sh linux`, `build.sh windows`, and `build.sh all` remain available at every version.
+The current version is **0.8.0**, adding continuous ownership frontlines, real ballistic impacts, richer terrain and the reference HUD. No major change is authorized, and it does not produce automated release packages. Keep `VERSION` and the `project(... VERSION ...)` value in `CMakeLists.txt` identical. Local `build.sh linux`, `build.sh windows`, and `build.sh all` remain available at every version.
 
 ## Major release procedure
 

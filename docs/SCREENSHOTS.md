@@ -1,6 +1,6 @@
 # Native application screenshots
 
-Every image below was regenerated from the native **0.7.0** OpenGL client at **1440×900, 100% UI scale**. A second render at **1280×720, 125% scale** verified the compact layout. These are application captures, not concept mockups.
+Every image below was regenerated from the native **0.8.0** OpenGL client at **1440×900, 100% UI scale**. A second render at **1280×720, 125% scale** verified the compact layout. These are application captures, not concept mockups.
 
 ## Main menu
 
@@ -69,3 +69,15 @@ Every image below was regenerated from the native **0.7.0** OpenGL client at **1
 ## Naval research branches
 
 ![Naval research](naval-research.png)
+
+## Ballistic missile flight
+
+![Conventional ballistic missile](ballistic-flight.png)
+
+## Actual strike impact
+
+![Ballistic impact](ballistic-impact.png)
+
+## Committed and queued unit paths
+
+![Queued movement route and arrival](queued-route.png)

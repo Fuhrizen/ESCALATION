@@ -2,6 +2,8 @@
 
 Validated 14 October 2026 on Linux x86-64, GCC 13, CMake 4.4.4, GLFW 3.4, Dear ImGui 1.91.8 and Mesa software OpenGL.
 
+Historical baseline results (not repeated for every subsequent patch):
+
 | Check | Result |
 | --- | --- |
 | Native CMake / CTest | Five suites passed: core, projection, tactical, native input and OpenGL smoke |
@@ -65,3 +67,9 @@ The existing native-input suite passed; native renders verify that the shared pa
 The native client built successfully. Four targeted CTest suites passed: simulation (14,504 checks), tactical combat (95 scenarios), native input (19 integration checks), and OpenGL smoke. New coverage includes independent simultaneous weapon launches, target-specific minimum/maximum ranges, guided versus snapshot impacts, ammunition slots, shipyard placement/manufacture/deployment, ocean detours and queued naval orders, port rearming/repair, and version-7 save restoration with previous technology-tree migration.
 
 Seventeen native states were captured at 1440×900/100% and 1280×720/125%. The new terrain shader compiled and rendered without GL errors; city/population, monument, naval capability and naval research views were inspected. Floating weapon labels were removed, and port-service capability text was shortened after visual review. All documented screenshots were refreshed. No broad sanitizer, packaging or cross-platform sweep was repeated. This pass does not establish full ICBM parity, competitive balance or Windows runtime validation.
+
+## 0.8.0 focused integration
+
+The integrated native build and four targeted suites passed: simulation (14,506 checks), tactical combat (102 scenarios), native input (22 integration checks), and OpenGL smoke. Missile scenarios verify actual delayed flight/impact, minimum/maximum envelopes, explicit point strikes, ammunition consumption, nuclear blast effects and save restoration. Input checks verify the moved HUD anchors, dock click protection and Escape cancellation for target mode. The final HUD-only corrections receive native input and render verification; unchanged simulation is not re-swept.
+
+Native captures include ownership frontlines, queued actual routes, a flying ballistic missile and its impact, at standard 1440×900/100% and compact 1280×720/125%. Frontline, terrain, missile and HUD changes are committed to main individually as functions finish. The uploaded game asset archive is inspected as reference; no unlicensed commercial art is copied. No sanitizer, packaging or Windows runtime sweep is repeated.
