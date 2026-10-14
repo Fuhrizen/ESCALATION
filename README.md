@@ -63,6 +63,10 @@ CLEAN_BUILD=1 JOBS=2 sh ./build.sh linux
 
 Validate the host orchestration separately with `python3 tests/test_build_pipeline.py`. Actual Podman/Bazzite execution must be confirmed on a host with Podman; this assistant workspace has neither Podman nor Docker installed.
 
+## Continuous validation
+
+Linux and Windows builds/tests run automatically on code pushes to main and pull requests. Linux also checks OpenGL rendering and reports frontline timings. See [CI controls and limits](docs/CI.md) and [workflow runs](https://github.com/Fuhrizen/ESCALATION/actions/workflows/validation.yml).
+
 ## Native development
 
 Install CMake 3.20+, a C++17 compiler and Git. On Debian/Ubuntu the desktop build additionally needs `libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev`. A desktop session and OpenGL 3.3 are required to play.

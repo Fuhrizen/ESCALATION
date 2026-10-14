@@ -1,0 +1,147 @@
+name: Validation
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
+  pull_request:
+    branches: [main]
+    paths-ignore: ['docs/**', '**/*.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: ${{ matrix.platform }} build and tests
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            platform: Linux
+          - os: windows-2022
+            platform: Windows
+    defaults:
+      run:
+        shell: bash
+    env:
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      EGL_PLATFORM: surfaceless
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Restore pinned dependency sources
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            build/_deps/glfw-src
+            build/_deps/imgui-src
+          key: validation-sources-v1-${{ runner.os }}-${{ hashFiles('CMakeLists.txt') }}
+      - name: Install Linux render dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libegl1 libgl1-mesa-dri python3-pil
+      - name: Validate package orchestration
+        if: runner.os == 'Linux'
+        run: python3 tests/test_build_pipeline.py
+      - name: Configure Linux client and EGL tests
+        if: runner.os == 'Linux'
+        run: |
+          dependencies=()
+          for name in glfw imgui; do
+            if [ -f "build/_deps/$name-src/CMakeLists.txt" ]; then
+              dependencies+=("-DFETCHCONTENT_SOURCE_DIR_${name^^}=$GITHUB_WORKSPACE/build/_deps/$name-src")
+            fi
+          done
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DESCALATION_NULL_PLATFORM=ON "${dependencies[@]}"
+      - name: Configure Windows client and tests
+        if: runner.os == 'Windows'
+        run: |
+          dependencies=()
+          for name in glfw imgui; do
+            if [ -f "build/_deps/$name-src/CMakeLists.txt" ]; then
+              dependencies+=("-DFETCHCONTENT_SOURCE_DIR_${name^^}=$GITHUB_WORKSPACE/build/_deps/$name-src")
+            fi
+          done
+          cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 -DBUILD_TESTING=ON "${dependencies[@]}"
+      - name: Build
+        run: cmake --build build --config Release --parallel 2
+      - name: Run simulation, tactical, camera and UI checks
+        run: ctest --test-dir build -C Release --output-on-failure --timeout 180 --output-junit ctest-results.xml
+      - name: Record frontline benchmark
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          build/escalation_frontline_benchmark | tee build/frontline-benchmark.txt
+      - name: Validate relocated installed data
+        run: |
+          set -euo pipefail
+          cmake --install build --config Release --prefix "$GITHUB_WORKSPACE/package"
+          mv data "$RUNNER_TEMP/source-data"
+          trap 'mv "$RUNNER_TEMP/source-data" data' EXIT
+          if [ "$RUNNER_OS" = Windows ]; then
+            ./package/escalation_headless.exe FRA 0
+            test -f package/escalation.exe
+          else
+            ./package/escalation_headless FRA 0
+            test -x package/escalation
+          fi
+          test -f package/data/terrain-surface.png
+          test -f package/data/weapon-icons.png
+          test -f package/data/fonts/DejaVuSans.ttf
+      - name: Summarize tests and timings
+        if: always()
+        run: |
+          python - <<'PY'
+          import os, pathlib, xml.etree.ElementTree as ET
+          report = pathlib.Path('build/ctest-results.xml')
+          lines = [f"## {os.environ['RUNNER_OS']} validation"]
+          if report.exists():
+              root = ET.parse(report).getroot()
+              lines += ['| Test | Result | Seconds |', '| --- | --- | ---: |']
+              for test in root.iter('testcase'):
+                  result = 'FAILED' if test.find('failure') is not None else 'SKIPPED' if test.find('skipped') is not None else 'Passed'
+                  lines.append(f"| {test.get('name')} | {result} | {test.get('time', '0')} |")
+          else:
+              lines.append('Tests did not produce a report; inspect the build/configure steps.')
+          benchmark = pathlib.Path('build/frontline-benchmark.txt')
+          if benchmark.exists():
+              lines += ['\n### Frontline diagnostic (not a performance guarantee)', '```text', benchmark.read_text().strip(), '```']
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write('\n'.join(lines) + '\n')
+          PY
+      - name: Compress render diagnostics
+        if: runner.os == 'Linux' && (failure() || github.event_name == 'workflow_dispatch')
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          from PIL import Image
+          for source in Path('build/smoke').glob('*.ppm'):
+              with Image.open(source) as image:
+                  image.thumbnail((1440, 900))
+                  image.save(source.with_suffix('.png'), optimize=True)
+          PY
+      - name: Keep small validation reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: validation-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build/ctest-results.xml
+            build/Testing/Temporary/LastTest.log
+            build/frontline-benchmark.txt
+            build/smoke/*.png
+          if-no-files-found: ignore
+          retention-days: 1
+          compression-level: 9
