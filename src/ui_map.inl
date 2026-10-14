@@ -13,14 +13,8 @@
     d->AddText(a,color,text.c_str());
   }
   static ImU32 attackColor(UnitType type,int alpha=190){
-    switch(type){
-      case UnitType::Artillery:return IM_COL32(244,183,91,alpha);
-      case UnitType::Fighter:return IM_COL32(119,185,245,alpha);
-      case UnitType::Bomber:return IM_COL32(185,149,237,alpha);
-      case UnitType::Destroyer:case UnitType::Submarine:return IM_COL32(85,205,218,alpha);
-      case UnitType::MissileLauncher:return IM_COL32(240,120,117,alpha);
-      default:return IM_COL32(142,209,133,alpha);
-    }
+    if(!groundUnit(type))return IM_COL32(0,0,0,0);
+    return IM_COL32(80,169,255,alpha);
   }
   void geographicalRing(ImDrawList* draw,Point centre,double kilometres,ImU32 color,bool dashed=false){
     if(kilometres<=0)return;
@@ -73,7 +67,7 @@
     int columns=int(std::ceil(camera.width/cell))+1,rows=int(std::ceil(camera.height/cell))+1;
     struct Sample {Point screen;double value=0;bool land=false;};
     std::vector<Sample> samples(size_t(columns)*rows);
-    auto color=[](double value){int a=int(std::clamp(std::abs(value)*42.0,0.0,42.0));return value>=0?IM_COL32(55,208,180,a):IM_COL32(228,107,99,a);};
+    auto color=[](double value){int a=int(std::clamp(std::abs(value)*42.0,0.0,42.0));return value>=0?IM_COL32(70,155,239,a):IM_COL32(244,131,78,a);};
     for(int y=0;y<rows;++y)for(int x=0;x<columns;++x){
       auto& s=samples[size_t(y)*columns+x];s.screen={camera.x+x*cell,camera.y+y*cell};auto p=camera.unproject(s.screen);if(!p)continue;
       s.value=sim.frontlinePressure(*p);
@@ -129,7 +123,7 @@
     }
   }
   void mapLabels(){
-    if(screen==Menu)return;
+    if(screen==Menu||(screen==Game&&panel!=None))return;
     auto* draw=ImGui::GetBackgroundDrawList();draw->PushClipRect({camera.x,camera.y},{camera.x+camera.width,camera.y+camera.height},true);
     riversOverlay(draw);roadsOverlay(draw);
     if(screen==Game)pressureOverlay(draw);
@@ -147,7 +141,7 @@
         std::stable_sort(order.begin(),order.end(),[&](size_t a,size_t b){bool ma=sim.mainSettlement(s.settlements[a].region)==int(a),mb=sim.mainSettlement(s.settlements[b].region)==int(b);if(ma!=mb)return ma;return s.settlements[a].population>s.settlements[b].population;});
         std::vector<Point> labels;
         for(auto n:order){const auto& city=s.settlements[n];bool main=sim.mainSettlement(city.region)==int(n);bool visible=false;auto p=camera.project(city.position,&visible);if(!visible)continue;
-          ImU32 c=city.owner==s.player?IM_COL32(133,215,194,255):IM_COL32(236,146,126,255);float r=main?4.2f:2.7f;
+          ImU32 c=city.owner==s.player?IM_COL32(142,201,249,255):IM_COL32(255,153,95,255);float r=main?4.2f:2.7f;
           draw->AddCircleFilled(vec(p),r+2,IM_COL32(8,17,28,240));draw->AddCircleFilled(vec(p),r,c);
           if(main)draw->AddCircle(vec(p),r+3,IM_COL32(234,213,167,200),20,1.0f);
           if(city.capture>0){draw->PathArcTo(vec(p),r+6,-1.5708f,-1.5708f+float(city.capture)*6.28318f,32);draw->PathStroke(IM_COL32(248,199,104,240),0,2);}
@@ -155,21 +149,21 @@
           if(clear){label(draw,p,city.name,c);labels.push_back(p);}
         }
       }
-      for(size_t n=0;n<s.sites.size();++n){const auto& site=s.sites[n];if(site.destroyed)continue;bool visible=false;auto p=camera.project(site.position,&visible);if(!visible)continue;
-        bool selected=selectedSite==int(n),hovered=hoverSite==int(n);ImU32 color=s.regions[site.region].owner==s.player?IM_COL32(105,197,214,255):IM_COL32(225,128,115,255);if(!site.enabled)color=IM_COL32(128,145,154,255);
+      for(size_t n=0;n<s.sites.size();++n){const auto& site=s.sites[n];if(site.destroyed||site.type==Facility::Shipyard||site.type==Facility::Airbase)continue;bool visible=false;auto p=camera.project(site.position,&visible);if(!visible)continue;
+        bool selected=selectedSite==int(n),hovered=hoverSite==int(n);ImU32 color=s.regions[site.region].owner==s.player?IM_COL32(102,178,249,255):IM_COL32(255,135,78,255);if(!site.enabled)color=IM_COL32(128,145,154,255);
         command_icons::badge(draw,vec(p),16,20+int(site.type),color,selected||hovered);
         if(showRanges&&(selected||hovered)){
           if(site.type==Facility::Radar){geographicalRing(draw,site.position,75,IM_COL32(116,197,224,170),true);label(draw,{p.x,p.y-25},"Radar coverage preview (75 km)",color);}
           else if(site.type==Facility::IndustrialPark||site.type==Facility::Factory)regionEffect(draw,site.region,IM_COL32(128,210,198,195));
         }
       }
-      for(size_t n=0;n<s.units.size();++n){const auto& unit=s.units[n];if(unit.health<=0)continue;bool visible=false;Point actual=displayedUnit(n),p=camera.project(actual,&visible);if(!visible)continue;
+      for(size_t n=0;n<s.units.size();++n){const auto& unit=s.units[n];if(unit.health<=0||!unit.deployed||!groundUnit(unit.type))continue;bool visible=false;Point actual=displayedUnit(n),p=camera.project(actual,&visible);if(!visible)continue;
         bool selected=std::find(selectedUnits.begin(),selectedUnits.end(),int(n))!=selectedUnits.end()||selectedUnit==int(n),hovered=hoverUnit==int(n);
-        ImU32 color=unit.owner==s.player?IM_COL32(136,228,210,255):IM_COL32(245,143,122,255);if(unit.remaining>0)color=IM_COL32(226,189,115,255);
-        if(showRanges&&(selected||hovered)&&unit.remaining<=0){geographicalRing(draw,actual,sim.unitRangeKm(unit),attackColor(unit.type));if(camera.zoom>24)label(draw,{p.x,p.y-(unit.moving?51:32)},std::to_string(int(sim.unitRangeKm(unit)))+" km weapons",IM_COL32(250,206,131,235));}
+        ImU32 color=unit.owner==s.player?IM_COL32(91,174,255,255):IM_COL32(255,135,78,255);if(unit.remaining>0)color=IM_COL32(226,189,115,255);
+        if(showRanges&&(selected||hovered)&&unit.remaining<=0){geographicalRing(draw,actual,sim.unitRangeKm(unit),unit.owner==s.player?attackColor(unit.type):IM_COL32(255,135,78,170));if(camera.zoom>24)label(draw,{p.x,p.y-(unit.moving?51:32)},std::to_string(int(sim.unitRangeKm(unit)))+" km weapons",IM_COL32(250,206,131,235));}
         if(sim.state.war&&(selected||hovered)&&unit.remaining<=0){
           int target=-1;double nearest=sim.unitRangeKm(unit);
-          for(size_t t=0;t<s.units.size();++t){const auto& enemy=s.units[t];if(enemy.owner==unit.owner||enemy.health<=0||enemy.remaining>0||!canEngage(unit.type,enemy.type))continue;double d=distanceKm(unit.position,enemy.position);if(d<=nearest){nearest=d;target=int(t);}}
+          for(size_t t=0;t<s.units.size();++t){const auto& enemy=s.units[t];if(enemy.owner==unit.owner||enemy.health<=0||!enemy.deployed||!groundUnit(enemy.type)||enemy.remaining>0||!canEngage(unit.type,enemy.type))continue;double d=distanceKm(unit.position,enemy.position);if(d<=nearest){nearest=d;target=int(t);}}
           if(target>=0){
             Point end=displayedUnit(size_t(target));std::vector<Point> shot={actual,end};geographicLine(draw,shot,IM_COL32(248,190,100,115),1.3f);
             double pulse=std::fmod(s.day*simulationTickSeconds+accumulator,1.0);bool visible=false;
@@ -179,25 +173,32 @@
         }
         if(selected&&unit.moving){
           const auto& planned=orderPreview(n).path;
-          std::vector<Point> route={actual};route.insert(route.end(),unit.waypoints.begin(),unit.waypoints.end());geographicLine(draw,route,IM_COL32(116,218,196,200),1.7f,false,false);
+          std::vector<Point> route={actual};route.insert(route.end(),unit.waypoints.begin(),unit.waypoints.end());geographicLine(draw,route,IM_COL32(128,199,255,235),2.0f,true,false);
           if(!unit.pendingDestinations.empty()&&planned.size()>unit.waypoints.size()){
             std::vector<Point> queued{route.back()};queued.insert(queued.end(),planned.begin()+unit.waypoints.size(),planned.end());geographicLine(draw,queued,IM_COL32(170,211,242,185),1.4f,true,false);
           }
-          label(draw,{p.x,p.y-32},"Arrival "+durationText(arrivalETA(n))+" at 1x",IM_COL32(175,228,213,240));
+          label(draw,{p.x,p.y-32},"Arrival "+durationText(arrivalETA(n))+" at 1x",IM_COL32(184,218,250,240));
         }
         unitSymbol(draw,p,unit.type,color,selected||hovered,unit.owner!=s.player);
-        draw->AddRectFilled({float(p.x)-11,float(p.y)+13},{float(p.x)+11,float(p.y)+16},IM_COL32(6,15,24,235),1);
-        draw->AddRectFilled({float(p.x)-11,float(p.y)+13},{float(p.x)-11+22*float(unit.health/100),float(p.y)+16},color,1);
+        for(int pip=0;pip<3;++pip){ImVec2 dot{float(p.x)+(pip-1)*6,float(p.y)-15};draw->AddCircleFilled(dot,2.4f,unit.health>pip*100.0/3?color:IM_COL32(33,48,67,230),12);draw->AddCircle(dot,2.4f,IM_COL32(6,16,30,230),12,1); }
       }
-      if(construction>=0&&!ImGui::GetIO().WantCaptureMouse){
+      if(readyUnitPlacement>=0&&readyUnitPlacement<int(UnitType::Count)&&groundUnit(UnitType(readyUnitPlacement))&&!ImGui::GetIO().WantCaptureMouse){
+        const auto type=UnitType(readyUnitPlacement);auto geo=camera.unproject(pointer);
+        std::string reason=geo?sim.deploymentReason(type,*geo):"Choose visible controlled land";
+        const ImU32 color=reason.empty()?IM_COL32(91,174,255,230):IM_COL32(255,135,78,230);
+        if(geo&&showRanges){Unit preview;preview.type=type;preview.owner=s.player;preview.position=*geo;geographicalRing(draw,*geo,sim.unitRangeKm(preview),color,true);}
+        unitSymbol(draw,pointer,type,color,true);
+        label(draw,{pointer.x+24,pointer.y},reason.empty()?"Deploy "+std::string(unitNames[readyUnitPlacement]):reason,color);
+      }
+      if(construction>=0&&Facility(construction)!=Facility::Shipyard&&Facility(construction)!=Facility::Airbase&&!ImGui::GetIO().WantCaptureMouse){
         auto geo=camera.unproject(pointer);int region=geo?sim.regionAt(*geo):-1;
         std::string reason=geo?sim.placementReason(Facility(construction),region,*geo):"Choose visible controlled land";
-        ImU32 color=reason.empty()?IM_COL32(116,232,188,230):IM_COL32(239,123,111,230);
+        ImU32 color=reason.empty()?IM_COL32(91,174,255,230):IM_COL32(255,135,78,230);
         command_icons::badge(draw,vec(pointer),23,20+construction,color,true);
         label(draw,{pointer.x+16,pointer.y},reason.empty()?"Place "+std::string(facilityNames[construction]):reason,color);
         if(geo&&showRanges&&Facility(construction)==Facility::Radar)geographicalRing(draw,*geo,75,IM_COL32(103,196,224,140),true);
       }
-      if(leftStarted&&ImGui::IsMouseDragging(ImGuiMouseButton_Left,8)&&construction<0){ImVec2 a{float(std::min(leftStart.x,pointer.x)),float(std::min(leftStart.y,pointer.y))},b{float(std::max(leftStart.x,pointer.x)),float(std::max(leftStart.y,pointer.y))};draw->AddRectFilled(a,b,IM_COL32(89,207,176,25));draw->AddRect(a,b,IM_COL32(124,225,202,190));}
+      if(leftStarted&&ImGui::IsMouseDragging(ImGuiMouseButton_Left,8)&&construction<0&&readyUnitPlacement<0){ImVec2 a{float(std::min(leftStart.x,pointer.x)),float(std::min(leftStart.y,pointer.y))},b{float(std::max(leftStart.x,pointer.x)),float(std::max(leftStart.y,pointer.y))};draw->AddRectFilled(a,b,IM_COL32(71,152,255,25));draw->AddRect(a,b,IM_COL32(91,174,255,190));}
     }
     draw->PopClipRect();
   }

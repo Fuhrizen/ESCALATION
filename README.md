@@ -2,7 +2,7 @@
 
 A native C++17 / OpenGL 3.3 strategy prototype about building a nation before committing it to war. Inspired by the conventional/nuclear escalation of **ICBM: Escalation** and the map-led national management of **State of Command**, with original code and presentation.
 
-Version 0.5.0 focuses on **readable command, deliberate combat pacing and manufacture-before-placement**. Units use shared kilometre-based capabilities; research and construction are controlled by a weight slider and completion estimates. Unit inspection lives in a horizontal bottom-right dock; buildings and regions use the side dock. Major roads, decorative rivers, proportional typography and original vector icons are bundled offline.
+Version 0.6.0 focuses on **readable command, deliberate combat pacing and manufacture-before-placement**. Units use shared kilometre-based capabilities; research and construction are controlled by a weight slider and completion estimates. Unit and building inspection uses paired bottom-right capability and selection boxes. Completed units and buildings appear in the permanent icon rail; circular controls open dedicated pages. Major roads, decorative rivers, proportional typography and original vector icons are bundled offline.
 
 ![Native map and national command](docs/map.png)
 
@@ -19,7 +19,7 @@ Version 0.5.0 focuses on **readable command, deliberate combat pacing and manufa
 - Main-city occupation takes at least 150 real seconds at 1×; other towns take at least 90. Stacking formations cannot bypass these minimums. Every regional settlement, including its main city, must be controlled. Defenders contest occupation and react to incursions.
 - 15,734 imported major road segments, with smoothly faded hierarchy and rounded geographic paths; nearby ground movement retains its 15% bonus. 600 named major river segments are decorative.
 - Selected/hovered weapon ranges match simulation kilometres. Radar coverage is explicitly a graphical preview; industrial-site inspection highlights the affected region.
-- Version-5 saves retain fabrication queues, ready inventory, queued unit orders and prior research/occupation state. Core, native input and genuine OpenGL rendering checks run through CTest.
+- Version-6 saves retain ready unit deployment, branching research, fabrication inventories and queued movement. Core, native input and genuine OpenGL rendering checks run through CTest.
 
 ## Build on Bazzite with Podman
 
@@ -98,7 +98,7 @@ For Linux render smoke tests without a desktop, install `libegl1 libgl1-mesa-dri
 3. Open Build (`B`). Queue a facility in Catalog, inspect its fabrication in Queue, then use Place from Ready. Valid placement consumes one completed building; invalid placement keeps inventory. Shift repeats while tokens remain.
 4. Click an operational military facility to queue compatible units. Construction and unit/warhead manufacturing share the same production allocation.
 5. Select units or drag a formation box. Shift adds/removes units; right-click orders and Shift-right-click queues destinations. Declare war before entering hostile land, then occupy enemy towns with ground formations. The main city has the longest minimum occupation.
-6. Hover or select units/buildings to inspect them in the right dock. Range previews use the same statistics as combat. Use Focus/Fit explicitly; inspection never moves the camera automatically.
+6. Select units or buildings to inspect their capabilities and commands in the paired bottom-right boxes. Range previews use the same statistics as combat. Use Focus/Fit explicitly; inspection never moves the camera automatically.
 7. Open Options to change camera responsiveness, UI scale or map layers. The menu pauses the campaign and suppresses map commands.
 8. Strategic research unlocks queued warheads. Delivery requires missile research and an operational missile site; explicitly confirmed nuclear release retains the prototype's scripted second-strike ending.
 
@@ -147,4 +147,12 @@ The top bar shows a blue Research / orange Build weight slider with percentages 
 
 Selected routes include routed queued legs and approximate arrival times at 1x speed. Roads affect the estimate; future combat and ownership changes can delay arrival. Attack ranges use translucent geodesic areas; simplified NATO-inspired frames identify unit roles. Roads and rivers use bounded geographic smoothing and fade into the map across zoom levels.
 
-Release numbering and the Windows/Linux major-release-only build workflow are described in [RELEASES.md](docs/RELEASES.md). X increases require explicit user approval; this feature pass remains **0.5.0**.
+Release numbering and the Windows/Linux major-release-only build workflow are described in [RELEASES.md](docs/RELEASES.md). X increases require explicit user approval; this feature pass remains **0.6.0**.
+
+### Approved interface and ground foundation (0.6.0)
+
+The approved Concept A layout replaces the bottom bar and wide construction drawer with a permanent slim deployment rail, icon quantity badges and hover names. Four labelled circles open Research, Production, Forces and Log pages. Ready items are completed units/buildings only; production queues live on their page. Click a ready icon and then controlled land to deploy. Invalid placement keeps inventory; Shift repeats and right-click/Escape cancels.
+
+Research has genuine multi-level forks. Locked cards, connections, search results and details are hidden until all prerequisites complete. Revealed nodes keep stable positions. Unit and building capability boxes show simulation-derived effects, acquired equipment and current stats. MANPADS equipment can be researched, but anti-air targeting remains pending the later aircraft system.
+
+Air/naval production, unit combat and sea transport have been removed from active gameplay. Strategic missiles and nuclear deterrence remain. Version-6 migration retires previous air/naval assets and research, keeps completed ground/strategic research and restores necessary prerequisite ancestry. Legacy numeric IDs remain reserved solely to read older saves. Manufactured units remain off-map until deployed and cannot move, fight or capture cities while in inventory.

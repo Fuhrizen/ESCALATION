@@ -13,7 +13,7 @@ namespace escalation {
   constexpr int resourceCount=int(Resource::Count);
   extern const std::array<const char*,resourceCount> resourceNames;
   enum class Field {
-    Army,Air,Naval,SpecialOps,Ballistic,Economy,Research,Logistics,Count
+    Army,Defence,Sensors,SpecialOps,Ballistic,Economy,Research,Logistics,Count
   };
   extern const std::array<const char*,8> fieldNames;
   enum class Facility {
@@ -31,10 +31,13 @@ namespace escalation {
     std::vector<Point> waypoints;
     std::vector<Point> pendingDestinations;
     bool moving=false;
+    bool deployed=true;
   };
   struct UnitStats { double speedKmPerSecond,rangeKm,damagePerSecond; };
   UnitStats unitStats(UnitType type);
   bool canEngage(UnitType attacker,UnitType defender);
+  struct Capability { std::string name,value,icon; bool active=true; };
+  bool groundUnit(UnitType type);
   struct Tech {
     std::string id,name,effect;
     Field field;
@@ -136,6 +139,15 @@ namespace escalation {
     int mainSettlement(int region) const;
     double frontlinePressure(Point position) const;
     double roadMovementBonus(Point position) const;
+    bool hasTech(int tech) const;
+    bool visibleResearch(int tech) const;
+    std::vector<Capability> unitCapabilities(size_t index) const;
+    std::vector<Capability> siteCapabilities(size_t index) const;
+    double unitDamagePerSecond(const Unit& unit,UnitType defender=UnitType::Infantry) const;
+    double unitProtection(const Unit& unit) const;
+    int readyUnitCount(UnitType type) const;
+    std::string deploymentReason(UnitType type,Point position) const;
+    bool deployUnit(UnitType type,Point position);
     bool available(int tech) const;
     std::string lockReason(int tech) const;
     bool queueResearch(int tech);

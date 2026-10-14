@@ -25,7 +25,7 @@
 #endif
 using namespace escalation;
 static ImFont* titleFont=nullptr;
-static ImVec4 muted(0.70f,0.78f,0.83f,1),accent(0.31f,0.81f,0.72f,1);
+static ImVec4 muted(0.70f,0.78f,0.83f,1),accent(0.25f,0.66f,1.0f,1);
 static ImVec2 vec(Point p){
   return {float(p.x),float(p.y)};
 }
@@ -64,21 +64,21 @@ static void fixedWindow(const char* name,float x,float y,float w,float h){
 static void style(){
   ImGui::StyleColorsDark();
   auto& s=ImGui::GetStyle();
-  s.WindowRounding=5;
+  s.WindowRounding=4;
   s.FrameRounding=3;
   s.ScrollbarRounding=3;
   s.WindowPadding={16,14};
   s.FramePadding={8,8};
   s.ItemSpacing={8,8};
-  s.Colors[ImGuiCol_WindowBg]={0.045f,0.065f,0.085f,0.98f};
+  s.Colors[ImGuiCol_WindowBg]={0.025f,0.06f,0.10f,1};
   s.Colors[ImGuiCol_PopupBg]={0.045f,0.065f,0.085f,0.99f};
   s.Colors[ImGuiCol_TitleBg]={0.045f,0.065f,0.085f,1};
   s.Colors[ImGuiCol_TitleBgActive]={0.075f,0.115f,0.145f,1};
   s.Colors[ImGuiCol_TitleBgCollapsed]={0.045f,0.065f,0.085f,1};
   s.Colors[ImGuiCol_FrameBg]={0.09f,0.14f,0.17f,1};
-  s.Colors[ImGuiCol_Button]={0.11f,0.27f,0.27f,1};
-  s.Colors[ImGuiCol_ButtonHovered]={0.17f,0.42f,0.39f,1};
-  s.Colors[ImGuiCol_Header]={0.10f,0.26f,0.26f,1};
+  s.Colors[ImGuiCol_Button]={0.055f,0.19f,0.32f,1};
+  s.Colors[ImGuiCol_ButtonHovered]={0.08f,0.32f,0.53f,1};
+  s.Colors[ImGuiCol_Header]={0.055f,0.22f,0.37f,1};
   s.Colors[ImGuiCol_CheckMark]=accent;
   s.Colors[ImGuiCol_PlotHistogram]=accent;
   s.Colors[ImGuiCol_Text]={0.93f,0.96f,0.97f,1};
@@ -118,7 +118,7 @@ struct App {
   };
   Screen screen=Menu;
   Panel panel=None;
-  int selectedNation=-1,selectedRegion=-1,selectedSite=-1,selectedUnit=-1,construction=-1,focus=5,speed=1;
+  int selectedNation=-1,selectedRegion=-1,selectedSite=-1,selectedUnit=-1,construction=-1,readyUnitPlacement=-1,focus=5,speed=1;
   bool paused=true,regionOpen=false,unitOpen=false,nationOpen=false,commandMode=false,showRanges=true,autoResearch=false,leftStarted=false,rightDragged=false,treeFocus=false;
   double accumulator=0;
   Point pointer,leftStart,popup;
@@ -157,7 +157,7 @@ struct App {
     message=text;
   }
   void clearSelection(){
-    selectedRegion=selectedSite=selectedUnit=construction=-1;
+    selectedRegion=selectedSite=selectedUnit=construction=readyUnitPlacement=-1;
     selectedUnits.clear();
     for(auto& group:controlGroups)group.clear();
     orderPreviews.clear();
@@ -234,6 +234,7 @@ struct App {
     notice("Select units or land. Construction [B], research [R], Space resumes.");
   }
   void toggle(Panel wanted){
+    cancelGestures();construction=readyUnitPlacement=-1;commandMode=false;
     panel=panel==wanted?None:wanted;
     if(panel==Research)treeFocus=true;
   }
@@ -248,6 +249,15 @@ struct App {
       return;
     }
     if(screen!=Game)return;
+    if(readyUnitPlacement>=0){
+      auto type=UnitType(readyUnitPlacement);
+      auto reason=sim.deploymentReason(type,geo);
+      if(sim.deployUnit(type,geo)){
+        notice(std::string("Deployed ")+unitNames[int(type)]);
+        if(!ImGui::GetIO().KeyShift||sim.readyUnitCount(type)==0)readyUnitPlacement=-1;
+      }else notice(reason);
+      return;
+    }
     if(construction>=0){
       int region=sim.regionAt(geo);
       if(sim.placeBuilding(Facility(construction),region,geo)){
@@ -268,7 +278,7 @@ struct App {
     double nearest=17;
     for(size_t i=0;i<sim.state.units.size();++i){
       auto& u=sim.state.units[i];
-      if(u.health<=0)continue;
+      if(u.health<=0||!u.deployed||u.remaining>0)continue;
       bool visible;
       auto p=camera.project(displayedUnit(size_t(&u-sim.state.units.data())),&visible);
       double d=std::hypot(p.x-pointer.x,p.y-pointer.y);
@@ -284,7 +294,7 @@ struct App {
       else if(sim.state.units[selectedUnit].owner==sim.state.player)selectedUnits.push_back(selectedUnit);
       if(selectedUnit>=0&&leftDoubleClick&&sim.state.units[selectedUnit].owner==sim.state.player){
         auto type=sim.state.units[selectedUnit].type;
-        for(size_t i=0;i<sim.state.units.size();++i){const auto& u=sim.state.units[i];bool visible=false;auto p=camera.project(u.position,&visible);if(u.owner==sim.state.player&&u.type==type&&u.health>0&&u.remaining<=0&&visible&&p.x>=camera.x&&p.x<camera.x+camera.width&&p.y>=camera.y&&p.y<camera.y+camera.height&&std::find(selectedUnits.begin(),selectedUnits.end(),int(i))==selectedUnits.end())selectedUnits.push_back(int(i));}
+        for(size_t i=0;i<sim.state.units.size();++i){const auto& u=sim.state.units[i];bool visible=false;auto p=camera.project(u.position,&visible);if(u.owner==sim.state.player&&u.deployed&&u.type==type&&u.health>0&&u.remaining<=0&&visible&&p.x>=camera.x&&p.x<camera.x+camera.width&&p.y>=camera.y&&p.y<camera.y+camera.height&&std::find(selectedUnits.begin(),selectedUnits.end(),int(i))==selectedUnits.end())selectedUnits.push_back(int(i));}
       }
       selectedSite=-1;selectedRegion=-1;
       unitOpen=selectedUnit>=0;
@@ -333,8 +343,8 @@ struct App {
   }
   double arrivalETA(size_t id){return orderPreview(id).eta;}
   void controls(double dt){
-    selectedUnits.erase(std::remove_if(selectedUnits.begin(),selectedUnits.end(),[&](int id){return id<0||id>=int(sim.state.units.size())||sim.state.units[id].health<=0;}),selectedUnits.end());
-    if(selectedUnit>=0&&(selectedUnit>=int(sim.state.units.size())||sim.state.units[selectedUnit].health<=0)){
+    selectedUnits.erase(std::remove_if(selectedUnits.begin(),selectedUnits.end(),[&](int id){return id<0||id>=int(sim.state.units.size())||sim.state.units[id].health<=0||!sim.state.units[id].deployed;}),selectedUnits.end());
+    if(selectedUnit>=0&&(selectedUnit>=int(sim.state.units.size())||sim.state.units[selectedUnit].health<=0||!sim.state.units[selectedUnit].deployed)){
       selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();unitOpen=selectedUnit>=0;notice("Selected formation lost");
     }
     auto& io=ImGui::GetIO();
@@ -352,18 +362,18 @@ struct App {
         center(sim.state.units[selectedUnit].position);
         camera.zoom=std::max(camera.zoom,40.0);
       }
-      if(screen==Game&&panel!=Research){
+      if(screen==Game&&panel==None){
         const ImGuiKey groupKeys[]={ImGuiKey_0,ImGuiKey_1,ImGuiKey_2,ImGuiKey_3,ImGuiKey_4,ImGuiKey_5,ImGuiKey_6,ImGuiKey_7,ImGuiKey_8,ImGuiKey_9};
         for(int n=0;n<10;++n)if(ImGui::IsKeyPressed(groupKeys[n],false)){
           if(io.KeyCtrl){controlGroups[n]=selectedUnits;notice("Control group "+std::to_string(n)+" assigned");}
           else{
             if(!io.KeyShift)selectedUnits.clear();
-            for(int id:controlGroups[n])if(id>=0&&id<int(sim.state.units.size())&&sim.state.units[id].owner==sim.state.player&&sim.state.units[id].health>0&&std::find(selectedUnits.begin(),selectedUnits.end(),id)==selectedUnits.end())selectedUnits.push_back(id);
+            for(int id:controlGroups[n])if(id>=0&&id<int(sim.state.units.size())&&sim.state.units[id].owner==sim.state.player&&sim.state.units[id].deployed&&sim.state.units[id].health>0&&std::find(selectedUnits.begin(),selectedUnits.end(),id)==selectedUnits.end())selectedUnits.push_back(id);
             selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=selectedRegion=-1;unitOpen=selectedUnit>=0;
           }
         }
         if(io.KeyCtrl&&ImGui::IsKeyPressed(ImGuiKey_A,false)){
-          selectedUnits.clear();for(size_t i=0;i<sim.state.units.size();++i){const auto& u=sim.state.units[i];bool visible=false;auto p=camera.project(u.position,&visible);if(u.owner==sim.state.player&&u.health>0&&u.remaining<=0&&visible&&p.x>=camera.x&&p.x<camera.x+camera.width&&p.y>=camera.y&&p.y<camera.y+camera.height)selectedUnits.push_back(int(i));}
+          selectedUnits.clear();for(size_t i=0;i<sim.state.units.size();++i){const auto& u=sim.state.units[i];bool visible=false;auto p=camera.project(u.position,&visible);if(u.owner==sim.state.player&&u.deployed&&u.health>0&&u.remaining<=0&&visible&&p.x>=camera.x&&p.x<camera.x+camera.width&&p.y>=camera.y&&p.y<camera.y+camera.height)selectedUnits.push_back(int(i));}
           selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=selectedRegion=-1;unitOpen=selectedUnit>=0;
         }
         if(ImGui::IsKeyPressed(ImGuiKey_X,false)){for(int id:selectedUnits)sim.holdUnit(size_t(id));notice("Selected formations stopped");}
@@ -379,15 +389,16 @@ struct App {
     }
     if(ImGui::IsKeyPressed(ImGuiKey_Escape)&&screen==Game&&windowFocused&&(pauseOpen||!popupOpen)){
       if(pauseOpen){pauseOpen=false;paused=wasPaused;saveSettings();}
-      else if(construction>=0||commandMode){construction=-1;commandMode=false;}
+      else if(construction>=0||readyUnitPlacement>=0||commandMode){construction=readyUnitPlacement=-1;commandMode=false;}
+      else if(panel!=None){panel=None;cancelGestures();}
       else openPause();
     }
     // Escape can open the pause modal during this very frame.
     blocked=pauseOpen||popupOpen||!windowFocused;
-    bool mapBlocked=blocked||panel==Research;
+    bool mapBlocked=blocked||(screen==Game&&panel!=None);
     if(mapBlocked)cancelGestures();
     keyboardAllowed=!io.WantTextInput&&!mapBlocked;
-    bool over=pointer.x>=camera.x&&pointer.x<camera.x+camera.width&&pointer.y>=camera.y&&pointer.y<camera.y+camera.height;
+    bool over=pointer.x>=camera.x&&pointer.x<camera.x+camera.width&&pointer.y>=camera.y&&pointer.y<camera.y+camera.height&&!(screen==Game&&mapOverlayHit(pointer,io.DisplaySize.x,io.DisplaySize.y));
     if(keyboardAllowed&&!io.KeyCtrl){
       double horizontal=(ImGui::IsKeyDown(ImGuiKey_D)||ImGui::IsKeyDown(ImGuiKey_RightArrow))-(ImGui::IsKeyDown(ImGuiKey_A)||ImGui::IsKeyDown(ImGuiKey_LeftArrow));
       double vertical=(ImGui::IsKeyDown(ImGuiKey_W)||ImGui::IsKeyDown(ImGuiKey_UpArrow))-(ImGui::IsKeyDown(ImGuiKey_S)||ImGui::IsKeyDown(ImGuiKey_DownArrow));
@@ -404,8 +415,8 @@ struct App {
       if(ImGui::IsMouseClicked(ImGuiMouseButton_Right)){rightDragged=false;rightStarted=true;rightGesture.begin(pointer);panButton=ImGuiMouseButton_Right;}
       if(ImGui::IsMouseClicked(ImGuiMouseButton_Middle))panButton=ImGuiMouseButton_Middle;
       if(rightStarted&&ImGui::IsMouseReleased(ImGuiMouseButton_Right)&&!rightDragged){
-        if(construction>=0){
-          construction=-1;
+        if(construction>=0||readyUnitPlacement>=0){
+          construction=readyUnitPlacement=-1;
           notice("Construction placement cancelled");
         }
         else if(screen==Game&&!selectedUnits.empty()){
@@ -430,11 +441,11 @@ struct App {
     if(leftStarted&&ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
       leftStarted=false;
       bool dragged=leftGesture.dragged(8);
-      if(dragged&&screen==Game&&construction<0&&mapInput){
+      if(dragged&&screen==Game&&construction<0&&readyUnitPlacement<0&&mapInput){
         if(!io.KeyShift)selectedUnits.clear();
         for(size_t i=0;i<sim.state.units.size();++i){
           auto& u=sim.state.units[i];
-          if(u.owner!=sim.state.player||u.health<=0||u.remaining>0)continue;
+          if(u.owner!=sim.state.player||!u.deployed||u.health<=0||u.remaining>0)continue;
           bool visible;
           auto p=camera.project(displayedUnit(size_t(&u-sim.state.units.data())),&visible);
           if(visible&&p.x>=std::min(leftStart.x,pointer.x)&&p.x<=std::max(leftStart.x,pointer.x)&&p.y>=std::min(leftStart.y,pointer.y)&&p.y<=std::max(leftStart.y,pointer.y)){auto found=std::find(selectedUnits.begin(),selectedUnits.end(),int(i));if(found==selectedUnits.end())selectedUnits.push_back(int(i));else if(io.KeyShift)selectedUnits.erase(found);}
@@ -460,7 +471,7 @@ struct App {
     hoverUnit=hoverSite=-1;
     if(screen==Game&&mapInput){
       double nearest=20;
-      for(size_t i=0;i<sim.state.units.size();++i){auto& u=sim.state.units[i];if(u.health<=0||u.remaining>0)continue;bool visible;auto p=camera.project(displayedUnit(i),&visible);double d=std::hypot(p.x-pointer.x,p.y-pointer.y);if(visible&&d<nearest){nearest=d;hoverUnit=int(i);}}
+      for(size_t i=0;i<sim.state.units.size();++i){auto& u=sim.state.units[i];if(u.health<=0||!u.deployed||u.remaining>0)continue;bool visible;auto p=camera.project(displayedUnit(i),&visible);double d=std::hypot(p.x-pointer.x,p.y-pointer.y);if(visible&&d<nearest){nearest=d;hoverUnit=int(i);}}
       for(size_t i=0;i<sim.state.sites.size();++i){auto& site=sim.state.sites[i];if(site.destroyed)continue;bool visible;auto p=camera.project(site.position,&visible);double d=std::hypot(p.x-pointer.x,p.y-pointer.y);if(visible&&d<nearest){nearest=d;hoverSite=int(i);hoverUnit=-1;}}
     }
   }
@@ -525,6 +536,7 @@ struct App {
     sidePanel(w,h);
     if(panel==Research)researchTree(w,h);
     inspector(w,h);
+    navigation(h);
     if(sim.state.victory||sim.state.defeat){
       ImGui::SetNextWindowPos({
         w/2-180,70
@@ -539,10 +551,10 @@ struct App {
     if(autoUiScale)uiScale=effectiveUiScale(w,h);
     ImGui::GetIO().FontGlobalScale=uiScale;
     static const ImGuiStyle baseStyle=ImGui::GetStyle();ImGui::GetStyle()=baseStyle;ImGui::GetStyle().ScaleAllSizes(uiScale);
-    camera.x=screen==Game&&panel!=None&&panel!=Research?320*uiScale:0;
+    camera.x=0;
     camera.y=screen==Game?hudHeight():60;
     camera.borders=showBorders;
-    camera.width=w-camera.x-(screen==Game&&panel!=Research&&selectedUnit<0?inspectorWidth(w):0);
+    camera.width=w;
     camera.height=h-camera.y-(screen==Game?commandHeight():58);
     ImGui::GetIO().FontGlobalScale=uiScale;
     if(screen==Menu){
@@ -603,7 +615,7 @@ int main(int argc,char** argv){
     }
     auto* window=glfwCreateWindow(initialWidth,initialHeight,"ESCALATION - National Command",nullptr,nullptr);
     if(!window)throw std::runtime_error("OpenGL 3.3 context creation failed");
-    glfwSetWindowSizeLimits(window,1080,720,GLFW_DONT_CARE,GLFW_DONT_CARE);
+    if(!smoke)glfwSetWindowSizeLimits(window,1080,720,GLFW_DONT_CARE,GLFW_DONT_CARE);
     if(smoke){
       headless.create(initialWidth,initialHeight);
       gl::load(HeadlessContext::getProc);
@@ -649,12 +661,12 @@ int main(int argc,char** argv){
       ImGui::NewFrame();
       if(smoke){
         if(frame==2){app.screen=App::Select;app.selectedNation=app.world.find("FRA");app.nationOpen=true;app.popup={1000,200};}
-        if(frame==4)app.start();
+        if(frame==4){app.start();app.sim.state.buildingInventory[int(Facility::ArmyBase)]=1;app.sim.state.buildingInventory[int(Facility::Radar)]=2;Unit ready=app.sim.state.units[0];ready.deployed=false;ready.moving=false;ready.path.clear();ready.waypoints.clear();ready.pendingDestinations.clear();app.sim.state.units.push_back(ready);app.sim.state.units.push_back(ready);}
         if(frame==6){
           app.camera.globe=false;
           app.camera.zoom=8;
         }
-        if(frame==8){app.panel=App::Research;app.researchSelected=app.focus*14;app.treeFocus=true;}if(frame==10)app.panel=App::Build;if(frame==12){app.panel=App::None;app.selectedRegion=app.sim.state.capital;app.regionOpen=true;app.popup={1000,180};}if(frame==14){app.regionOpen=false;app.panel=App::Forces;}
+        if(frame==8){app.focus=0;app.panel=App::Research;app.researchSelected=-1;app.treeFocus=true;for(int id:{0,1,2,3,5})app.sim.state.completed[id]=true;}if(frame==10)app.panel=App::Build;if(frame==12){app.panel=App::None;app.selectedRegion=app.sim.state.capital;app.regionOpen=true;app.popup={1000,180};}if(frame==14){app.regionOpen=false;app.panel=App::Forces;}
         if(frame==14){
           app.sim.declareWar();
           for(size_t n=0;n<app.sim.techs.size();++n)if(app.sim.available(int(n))){app.sim.queueResearch(int(n));break;}
@@ -694,7 +706,8 @@ int main(int argc,char** argv){
       app.windowFocused=smoke||glfwGetWindowAttrib(window,GLFW_FOCUSED);
       app.frame(float(w),float(h),smoke?0.016:dt);
       ImGui::Render();
-      app.renderer.render(app.world,app.sim.state,app.camera,app.selectedNation,app.selectedRegion,fw,fh,float(fw)/w,float(fh)/h);
+      if(app.screen==App::Game&&app.panel!=App::None){gl::Viewport(0,0,fw,fh);gl::ClearColor(.025f,.06f,.10f,1);gl::Clear(0x4000|0x0100);}
+      else app.renderer.render(app.world,app.sim.state,app.camera,app.selectedNation,app.selectedRegion,fw,fh,float(fw)/w,float(fh)/h);
       ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
       if(smoke&&frame%2==1){
         screenshot(shots/(std::to_string(frame)+".ppm"),fw,fh);

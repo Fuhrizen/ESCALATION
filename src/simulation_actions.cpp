@@ -10,9 +10,6 @@ namespace escalation {
   static bool ground(UnitType t){
     return t==UnitType::Infantry||t==UnitType::Armour||t==UnitType::Artillery||t==UnitType::SpecialForces||t==UnitType::MissileLauncher;
   }
-  static bool naval(UnitType t){
-    return t==UnitType::Destroyer||t==UnitType::Submarine;
-  }
   int Simulation::regionAt(Point p) const {
     int country=world_->pick(p);
     if(country<0)return -1;
@@ -34,11 +31,6 @@ namespace escalation {
     if(state.buildingInventory[int(type)]<=0)return "Manufacture this building first";
     auto reason=buildReason(r,type);if(!reason.empty())return reason;
     if(!std::isfinite(p.x)||!std::isfinite(p.y)||regionAt(p)!=r)return "Place on controlled land";
-    if(type==Facility::Shipyard){
-      bool coast=false;
-      for(int n=0;n<16;++n){double angle=n*0.3926990817;if(world_->pick({p.x+std::cos(angle)*0.6,p.y+std::sin(angle)*0.6})<0)coast=true;}
-      if(!coast)return "Shipyards require a coastline";
-    }
     return "";
   }
   bool Simulation::placeBuilding(Facility type,int r,Point p){
@@ -92,17 +84,14 @@ namespace escalation {
     if(state.units.size()>=1000)return "Campaign unit history capacity reached";
     int n=int(t);
     if(n<0||n>=9)return "Unknown unit";
+    if(!ground(t))return "Retired air or naval unit";
     if(site<0||site>=int(state.sites.size()))return "Select a production building";
     auto& s=state.sites[site];
     if(s.region<0||s.region>=int(state.regions.size())||s.destroyed||!s.enabled||s.remaining>0||state.regions[s.region].owner!=state.player)return "Production building is not operational";
-    Facility needed=naval(t)?Facility::Shipyard:(t==UnitType::Fighter||t==UnitType::Bomber)?Facility::Airbase:t==UnitType::MissileLauncher?Facility::Silo:Facility::ArmyBase;
+    Facility needed=t==UnitType::MissileLauncher?Facility::Silo:Facility::ArmyBase;
     if(s.type!=needed&&!(s.type==Facility::Factory&&ground(t)))return std::string("Requires ")+facilityNames[int(needed)];
-    static int fields[]={
-      0,0,0,1,1,2,2,3,4
-    },levels[]={
-      0,1,2,1,3,1,2,1,3
-    };
-    if(state.levels[fields[n]]<levels[n])return "Research more "+std::string(fieldNames[fields[n]])+" technology";
+    int prerequisite=t==UnitType::Armour?7:t==UnitType::Artillery?9:t==UnitType::SpecialForces?46:t==UnitType::MissileLauncher?62:-1;
+    if(prerequisite>=0&&!hasTech(prerequisite))return "Requires "+techs[prerequisite].name;
 
     int alive=0;
     for(auto& u:state.units)if(u.owner==state.player&&u.health>0)++alive;
@@ -120,20 +109,7 @@ namespace escalation {
     u.position=source.position;
     u.remaining=u.total=unitCost(t);
     u.destination=u.position;
-    if(naval(t)){
-      bool found=false;
-      for(double radius=0.1;radius<=2&&!found;radius+=0.1)for(int n=0;n<24&&!found;++n){
-        double a=n*0.2617993878;
-        Point p{
-          source.position.x+radius*std::cos(a),source.position.y+radius*std::sin(a)
-        };
-        if(world_->pick(p)<0){
-          u.position=p;
-          found=true;
-        }
-      }
-      if(!found)return false;
-    }
+    u.deployed=false;
 
     state.units.push_back(u);
     log("Production queued: "+std::string(unitNames[int(t)]));

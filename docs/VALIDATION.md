@@ -51,3 +51,7 @@ These results validate deterministic flows and native presentation, not balanced
 ## 0.5.0 focused pass
 
 One consolidated native build, tactical queue/save checks and native input integration passed. New cases cover queue append/replacement/completion, invalid-order preservation, stop, save restoration, control-group recall, the full date and automatic scale response. A single 1280×720 render pass at 125% scale covered the changed dock and map surfaces; clipped top-bar/dock content was corrected by increasing their layout heights. The major-release policy was checked against six eligible/ineligible tag/version/history cases; Windows and Linux hosted packaging will first run on a published, explicitly approved vX.0.0 release.
+
+## 0.6.0 approved interface integration
+
+Focused simulation, tactical and native-input suites passed. Coverage includes multi-level branches, hidden prerequisites, actual infantry damage/protection/medicine, retired air/naval production and transport, ready-unit inactivity and deployment, version-5 migration/version-6 inventory roundtrip, and overlay/page input interception. Native renders at 1440×900/100% and 1280×720/125% were reviewed. The compact header was increased to avoid clipping, capability effects wrap, and the research canvas keeps a readable text floor with panning. No broad sanitizer or platform rebuild sweep was repeated; hosted major-release packaging is unchanged.

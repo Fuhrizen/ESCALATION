@@ -5,7 +5,6 @@
 #include <queue>
 namespace escalation {
   static bool ground(UnitType t){return t==UnitType::Infantry||t==UnitType::Armour||t==UnitType::Artillery||t==UnitType::SpecialForces||t==UnitType::MissileLauncher;}
-  static bool naval(UnitType t){return t==UnitType::Destroyer||t==UnitType::Submarine;}
   void Simulation::holdUnit(size_t i){
     if(i<state.units.size()&&state.units[i].owner==state.player){
       auto& u=state.units[i];
@@ -24,7 +23,7 @@ namespace escalation {
   bool Simulation::orderUnitAt(size_t i,Point p,bool append){
     if(i>=state.units.size())return false;
     auto& u=state.units[i];
-    if(u.owner!=state.player||u.health<=0||u.remaining>0)return false;
+    if(u.owner!=state.player||u.health<=0||u.remaining>0||!u.deployed)return false;
     // Validate a queued leg from its eventual start without changing the live route.
     Unit planned=u;
     if(append&&u.moving){
@@ -47,23 +46,11 @@ namespace escalation {
     int rival=u.owner==state.player?state.enemy:state.player;
     auto accessible=[&](int region){return region>=0&&region<int(state.regions.size())&&
       (state.regions[region].owner==u.owner||(state.war&&state.regions[region].owner==rival));};
-    if(ground(u.type)&&!accessible(destination))return false;
-    if(naval(u.type)&&destination>=0)return false;
-    if(destination>=0&&!accessible(destination))return false;
-    bool transport=false;
-    // A disconnected theatre link is never itself permission to sail ground forces.
-    if(ground(u.type)&&state.levels[2]>=1)for(const auto& site:state.sites)
-      if(site.region>=0&&site.region<int(state.regions.size())&&site.type==Facility::Shipyard&&
-         !site.destroyed&&site.enabled&&site.remaining<=0&&state.regions[site.region].owner==u.owner)transport=true;
+    if(!ground(u.type)||!u.deployed||!accessible(destination))return false;
     auto traversable=[&](Point q){
-      if(!ground(u.type)&&!naval(u.type))return true;
       int nation=-1;
       for(int candidate:{state.player,state.enemy})if(world_->countries[candidate].contains(q)){nation=candidate;break;}
-      if(nation<0){
-        // Distinguish actual ocean from a neutral country before allowing embarkation.
-        return (naval(u.type)||transport)&&world_->pick(q)<0;
-      }
-      if(naval(u.type))return false;
+      if(nation<0)return false;
       int nearest=-1;double best=1e30;
       for(size_t r=0;r<state.regions.size();++r)if(state.regions[r].nation==nation){
         Point center=state.regions[r].center;double dx=std::remainder(q.x-center.x,360.0),dy=q.y-center.y;
@@ -123,7 +110,7 @@ namespace escalation {
   std::vector<Point> Simulation::unitPlannedPath(size_t i) const{
     if(i>=state.units.size())return {};
     Unit unit=state.units[i];
-    if(!unit.moving||unit.health<=0||unit.remaining>0)return {};
+    if(!unit.moving||unit.health<=0||unit.remaining>0||!unit.deployed)return {};
     if(unit.waypoints.empty()&&!planUnitMovement(unit,unit.destination))return {};
     std::vector<Point> path=unit.waypoints;
     unit.position=unit.destination;
@@ -137,7 +124,7 @@ namespace escalation {
   double Simulation::unitArrivalETA(size_t i) const{
     if(i>=state.units.size())return std::numeric_limits<double>::infinity();
     Unit unit=state.units[i];
-    if(unit.health<=0||unit.remaining>0)return std::numeric_limits<double>::infinity();
+    if(unit.health<=0||unit.remaining>0||!unit.deployed)return std::numeric_limits<double>::infinity();
     if(!unit.moving)return 0;
     if(unit.waypoints.empty()&&!planUnitMovement(unit,unit.destination))return std::numeric_limits<double>::infinity();
     double seconds=0;
@@ -169,7 +156,15 @@ namespace escalation {
   void Simulation::unitsTick(){
     for(auto& u:state.units){
       if(u.health<=0){u.pendingDestinations.clear();continue;}
-      if(u.remaining>0)continue; // Production is allocated by economy(), per producer.
+      if(u.remaining>0||!u.deployed)continue; // Production is allocated by economy(), per producer.
+      if(u.owner==state.player&&ground(u.type)&&hasTech(12)&&u.health<100){
+        bool engaged=false;
+        if(state.war)for(const auto& enemy:state.units)if(enemy.owner!=u.owner&&enemy.deployed&&enemy.health>0&&enemy.remaining<=0&&ground(enemy.type)){
+          double range=std::max(unitRangeKm(u),unitRangeKm(enemy));
+          if(distanceKm(u.position,enemy.position)<=range){engaged=true;break;}
+        }
+        if(!engaged)u.health=std::min(100.0,u.health+.10*simulationTickSeconds);
+      }
       if(!u.moving)continue;
       if(u.waypoints.empty()){
         // Older snapshots have region-only orders; validate a fresh geometric route.
@@ -202,7 +197,7 @@ namespace escalation {
     }
     if(state.simpleEconomy){
       state.brigades=0;
-      for(auto& u:state.units)if(u.owner==state.player&&ground(u.type)&&u.health>0&&u.remaining<=0)state.brigades+=u.health/100;
+      for(auto& u:state.units)if(u.owner==state.player&&ground(u.type)&&u.health>0&&u.remaining<=0&&u.deployed)state.brigades+=u.health/100;
     }
   }
 }

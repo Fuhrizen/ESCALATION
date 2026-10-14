@@ -6,7 +6,7 @@ Version 0.4's loop is choose a nation â†’ weight research versus construction â†
 
 The essential top HUD shows identity, peace/war, date, pause/speed and options. The bottom rail opens construction, research, forces and log. A fixed right inspector retains the selected formation/building/region; another hovered entity gets a compact preview without displacing selection or commands. Unit actions precede detailed statistics. Construction has Catalog, Queue and Ready tabs with visible counts.
 
-Research uses a stable full-width command surface. Field navigation and allocation stay above a left programme/technology inspector and a horizontally advancing spline canvas. A foundation opens two actual sibling prerequisite chains; selection inspects a card and Queue is explicit. Search, Fit, Current and middle-drag/wheel browsing are available. Large text does not require a different movable-window arrangement.
+Research uses a stable full-width command surface. A category rail borders a branching canvas with shared foundations, three primary forks and further sub-branches. Selected details anchor at bottom right. Prerequisite-locked nodes and edges are absent until unlocked; revealed nodes retain stable positions. Search, Fit, Current and middle-drag/wheel browsing are available. Large text does not require a different movable-window arrangement.
 
 Licensed DejaVu Sans regular/bold replace the tiny bitmap typography. One original geometric icon vocabulary supplies map markers, catalog cards and inspector portraits. Cyan/amber/green/coral states are reinforced with words and progress, not color alone. Selected/hovered weapon circles are geodesic projections of the exact mechanical range. Radar is labeled a graphical coverage preview; it does not silently promise unimplemented detection. Industrial effects highlight the affected region.
 
@@ -55,3 +55,7 @@ Version 4 includes fabricated building progress and ready counts. Older unfinish
 The world still renders 177 source records while only the player and one rival receive detailed economic/tactical simulation. Full air missions, loadouts, detection/fog, interception, diplomacy and full-world strategic AI remain further work. The terrain texture/coastlines remain generalized world-view assets; this iteration does not claim street-scale navigation or exact reference-game parity. Nuclear release retains explicit confirmation and the prototype's scripted second-strike ending.
 
 Research sources and interface acceptance scenarios are in [UX_REDESIGN.md](UX_REDESIGN.md); numerical tuning here is original, not extracted reference-game data.
+
+## Approved Concept A (0.6.0)
+
+A slim opaque global header carries full date and national allocation. Deployment inventory occupies a 64px icon column with quantity badges, hover names and additional columns on overflow. Research, Production, Forces and Log use labelled circular controls at bottom left and replace the map with their pages. Capabilities sit immediately left of active unit/building inspection. Their values use the same mechanics as combat and production; unacquired equipment is not shown. Ground-only units manufacture into ready inventory and are inert until deployment.

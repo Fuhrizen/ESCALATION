@@ -46,6 +46,8 @@ int main(){try{
 
   Simulation s(w);s.start(fra,Field::Army,false);
   check(s.state.regions.size()==48&&s.techs.size()==112,"campaign and tech catalogue initialized");
+  check(s.techs[4].prerequisites==std::vector<int>{1}&&s.techs[7].prerequisites==std::vector<int>{1},"motor and mechanised transport are parallel mobility choices");
+  for(const auto& tech:s.techs)for(int p:tech.prerequisites)check(tech.year>=s.techs[p].year,"research reference year never precedes a prerequisite");
   check(s.state.simpleEconomy&&s.state.money==0,"regional output replaces currency economy");
   check(s.state.units.size()==8,"both nations have starting forces");
   check(s.state.outputRate>0,"initial output estimate available without advancing time");
@@ -93,22 +95,27 @@ int main(){try{
   check(!s.placeBuilding(Facility::Factory,24,s.state.regions[24].center)&&s.state.buildingInventory[int(Facility::Factory)]==1,"failed placement preserves inventory");
   check(s.placeBuilding(Facility::Factory,home,s.state.regions[home].center)&&s.state.buildingInventory[int(Facility::Factory)]==0,"successful placement consumes ready inventory");
   check(s.state.sites.back().remaining==0,"ready building is operational when placed");
-  completeField(s,2,0);s.state.buildingInventory[int(Facility::Shipyard)]=1;
+  s.state.buildingInventory[int(Facility::Shipyard)]=1;
   check(!s.placementReason(Facility::Shipyard,home,s.state.regions[home].center).empty(),"shipyard preview rejects inland placement");
-  check(!s.placeBuilding(Facility::Shipyard,home,s.state.regions[home].center)&&s.state.buildingInventory[int(Facility::Shipyard)]==1,"inland shipyard placement preserves inventory");
+  check(!s.placeBuilding(Facility::Shipyard,home,s.state.regions[home].center)&&s.state.buildingInventory[int(Facility::Shipyard)]==1,"retired shipyard placement preserves inventory");s.state.buildingInventory[int(Facility::Shipyard)]=0;
   near(s.state.units[recruit].remaining,100-(output*simulationTickSeconds*0.1-0.01),"unused share flows to unfinished jobs");
   double unitWork=s.state.units[recruit].remaining;s.state.researchBudget=1;s.refreshRates();s.tick();
   near(s.state.units[recruit].remaining,unitWork,"full research allocation pauses production");
   s.state.researchBudget=0.5;
   for(int n=0;n<5000&&(!s.state.completed[0]||s.state.units[recruit].remaining>0);++n)s.tick();
   check(s.state.completed[0]&&s.state.levels[0]==1,"research completes and unlocks platform");
-  check(s.state.units[recruit].remaining==0,"unit completes from shared output");
+  check(s.state.units[recruit].remaining==0&&!s.state.units[recruit].deployed,"unit completes into ready inventory");
+  check(s.readyUnitCount(UnitType::Infantry)==1,"ready formation counted separately");
+  check(!s.orderUnitAt(recruit,s.state.regions[home].center),"ready formation cannot move before deployment");
+  check(!s.deployUnit(UnitType::Infantry,{-30,0})&&s.readyUnitCount(UnitType::Infantry)==1,"invalid deployment preserves ready inventory");
+  check(s.deployUnit(UnitType::Infantry,s.state.regions[home].center)&&s.readyUnitCount(UnitType::Infantry)==0,"controlled land deployment consumes ready inventory");
   check(s.available(1)&&s.available(2),"sibling research paths available independently");
   check(s.researchCost(2)>s.techs[2].cost,"future tech carries cost premium");
   check(s.queueResearch(2),"future tech available without year blocking");
   double premium=s.state.research.front().cost;s.state.day+=365*25;s.tick();
   near(s.state.research.front().cost,premium,"research price fixed at queue time");
-  check(s.queueUnit(UnitType::Armour,base),"research unlocks armoured production");
+  s.state.completed[1]=s.state.completed[4]=s.state.completed[7]=true;
+  check(s.queueUnit(UnitType::Armour,base),"specific armour technology unlocks armoured production");
   size_t canceledUnit=s.state.units.size()-1;
   check(s.cancelUnit(canceledUnit)&&!s.cancelUnit(canceledUnit),"production cancellation cannot repeat");
   check(s.queueBuilding(Facility::Laboratory),"laboratory manufacture queued");
@@ -157,7 +164,7 @@ int main(){try{
   fifo.tick();
   check(fifo.state.buildingInventory[int(Facility::Factory)]==1&&fifo.state.buildingQueue.size()==1,"FIFO front completes exactly once");
   near(fifo.state.buildingQueue.front().progress,tickWork-0.01,"FIFO next item receives residual capacity in same tick");
-  check(fifo.state.sites.size()==12,"ready inventory grants no operational sites");
+  check(fifo.state.sites.size()==10,"ready inventory grants no operational sites");
   Simulation sharedFifo(w);sharedFifo.start(fra);
   sharedFifo.queueBuilding(Facility::Factory);sharedFifo.queueBuilding(Facility::Laboratory);sharedFifo.queueUnit(UnitType::Infantry,producer(sharedFifo,Facility::ArmyBase));
   sharedFifo.state.buildingQueue.front().progress=sharedFifo.state.buildingQueue.front().total-0.01;
@@ -178,14 +185,11 @@ int main(){try{
   for(int n=0;n<50;++n){s.tick();loaded.tick();}
   near(loaded.state.research.front().progress,s.state.research.front().progress,"restored research continues deterministically");
   for(size_t i=0;i<s.state.units.size();++i)near(loaded.state.units[i].remaining,s.state.units[i].remaining,"restored production continues deterministically");
-  Simulation flying(w);flying.start(fra);completeField(flying,1,0);
-  check(flying.queueUnit(UnitType::Fighter,producer(flying,Facility::Airbase)),"aircraft production unlock");
-  for(int n=0;n<5000&&flying.state.units.back().remaining>0;++n)flying.tick();
-  size_t aircraft=flying.state.units.size()-1;
-  check(flying.orderUnitAt(aircraft,{-10,45}),"aircraft ocean destination order");flying.tick();flying.save(save);
-  Simulation flightRestored(w);flightRestored.load(save);
-  check(flightRestored.state.units[aircraft].moving&&flightRestored.state.units[aircraft].waypoints.size()==flying.state.units[aircraft].waypoints.size(),"geometric route and moving order saved");
-  for(int n=0;n<12;++n){flying.tick();flightRestored.tick();near(distance(flying.state.units[aircraft].position,flightRestored.state.units[aircraft].position),0,"restored route follows identical movement");}
+  Simulation grounded(w);grounded.start(fra);
+  check(!grounded.queueUnit(UnitType::Fighter,producer(grounded,Facility::ArmyBase)),"legacy aircraft cannot be manufactured");
+  check(grounded.orderUnitAt(0,grounded.state.units[0].position),"ground route checkpoint order");grounded.save(save);
+  Simulation groundRestored(w);groundRestored.load(save);
+  check(groundRestored.state.units[0].deployed&&groundRestored.state.units[0].moving,"deployed state and ground order survive saves");
 #ifndef ESCALATION_SKIP_EXCEPTION_TESTS
   int previous=loaded.state.day;
   auto rejects=[&](const Json& bad,const char* reason){writeSave(save,bad);bool rejected=false;try{loaded.load(save);}catch(const std::exception&){rejected=true;}check(rejected,reason);check(loaded.state.day==previous,"failed load remains transactional");};
@@ -202,6 +206,22 @@ int main(){try{
   bad=valid;bad.get<Object>()["buildingQueue"].get<Array>()[0].get<Object>()["total"]=num(99);rejects(bad,"fabrication cost cannot change in save");
   bad=valid;auto repeated=bad.get<Object>()["buildingQueue"].get<Array>()[0];bad.get<Object>()["buildingQueue"]=Json(Array(65,repeated));rejects(bad,"oversized fabrication queue rejected");
 #endif
+  // Version 6 keeps completed formations off the map until controlled-land placement.
+  Simulation ready(w);ready.start(fra);ready.queueUnit(UnitType::Infantry,producer(ready,Facility::ArmyBase));
+  ready.state.units.back().remaining=0;ready.save(save);Simulation readyRestored(w);readyRestored.load(save);
+  check(readyRestored.readyUnitCount(UnitType::Infantry)==1&&!readyRestored.state.units.back().deployed,"ready formation inventory survives save and restore");
+  check(readyRestored.deployUnit(UnitType::Infantry,readyRestored.state.regions[readyRestored.state.capital].center),"restored ready inventory deploys normally");
+  // Legacy branch IDs migrate without granting replacement defence technology.
+  Simulation previousTree(w);previousTree.start(fra);previousTree.state.completed[0]=previousTree.state.completed[2]=true;
+  previousTree.state.completed[14]=previousTree.state.completed[15]=true;
+  previousTree.state.sites.push_back({previousTree.state.capital,Facility::Airbase,0,1,true,previousTree.state.regions[previousTree.state.capital].center,false});
+  Unit retired;retired.owner=previousTree.state.player;retired.region=previousTree.state.capital;retired.type=UnitType::Fighter;retired.position=retired.destination=previousTree.state.regions[retired.region].center;previousTree.state.units.push_back(retired);
+  previousTree.state.buildingInventory[int(Facility::Shipyard)]=2;previousTree.state.buildingQueue.push_back({Facility::Shipyard,10,160});
+  previousTree.save(save);auto v5=readJson(save);v5.get<Object>()["version"]=num(5);writeSave(save,v5);
+  Simulation groundMigration(w);groundMigration.load(save);
+  check(groundMigration.hasTech(7)&&!groundMigration.hasTech(14)&&!groundMigration.hasTech(15),"legacy armour preserved while aircraft research grants no defence replacement");
+  check(groundMigration.state.sites.back().destroyed&&groundMigration.state.units.back().health==0,"legacy air assets retired safely without changing producer indices");
+  check(groundMigration.state.buildingQueue.empty()&&groundMigration.state.buildingInventory[int(Facility::Shipyard)]==0,"legacy naval manufacture and inventory retired");
   // Version 3 unfinished foundations preserve their fraction exactly once.
   Simulation foundation(w);foundation.start(fra);
   foundation.state.sites.push_back({foundation.state.capital,Facility::Factory,60,0,true,foundation.state.regions[foundation.state.capital].center,false});

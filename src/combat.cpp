@@ -8,14 +8,11 @@ namespace {
 bool occupying(UnitType t) {
   return t==UnitType::Infantry||t==UnitType::Armour||t==UnitType::Artillery||t==UnitType::SpecialForces;
 }
-bool naval(UnitType t) { return t==UnitType::Destroyer||t==UnitType::Submarine; }
-bool ready(const Unit& u) { return u.health>0&&u.remaining<=0; }
+bool ready(const Unit& u) { return u.deployed&&u.health>0&&u.remaining<=0; }
 double strength(const Unit& u) {
   return (u.type==UnitType::Armour?1.8:u.type==UnitType::Artillery?1.2:1.0)*u.health/100;
 }
-int technologyField(UnitType t) {
-  return naval(t)?2:t==UnitType::Fighter||t==UnitType::Bomber?1:t==UnitType::SpecialForces?3:t==UnitType::MissileLauncher?4:0;
-}
+
 
 }
 
@@ -87,8 +84,8 @@ void Simulation::combat(){
     for(size_t b=a+1;b<state.units.size();++b){
       const auto& ub=state.units[b];if(!ready(ub)||ua.owner==ub.owner)continue;
       double d=distanceKm(ua.position,ub.position);
-      if(canEngage(ua.type,ub.type)&&d<=unitRangeKm(ua))damage[b]+=unitStats(ua.type).damagePerSecond*simulationTickSeconds*(.35+.65*ua.health/100)*(ua.owner==state.player?1+0.12*state.levels[technologyField(ua.type)]:1.15);
-      if(canEngage(ub.type,ua.type)&&d<=unitRangeKm(ub))damage[a]+=unitStats(ub.type).damagePerSecond*simulationTickSeconds*(.35+.65*ub.health/100)*(ub.owner==state.player?1+0.12*state.levels[technologyField(ub.type)]:1.15);
+      if(canEngage(ua.type,ub.type)&&d<=unitRangeKm(ua))damage[b]+=unitDamagePerSecond(ua,ub.type)*simulationTickSeconds*(.35+.65*ua.health/100)*(1-unitProtection(ub));
+      if(canEngage(ub.type,ua.type)&&d<=unitRangeKm(ub))damage[a]+=unitDamagePerSecond(ub,ua.type)*simulationTickSeconds*(.35+.65*ub.health/100)*(1-unitProtection(ua));
     }
   }
   for(size_t i=0;i<state.units.size();++i){

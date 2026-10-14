@@ -56,6 +56,10 @@ int main(){
     io.AddKeyEvent(ImGuiKey_X,true);frame();check(!app.sim.state.units[0].moving&&app.sim.state.units[0].pendingDestinations.empty(),"X stops active and queued orders");io.AddKeyEvent(ImGuiKey_X,false);frame();
     app.sim.state.day=59;check(app.campaignDate()=="1 March 1920","Full date preserves campaign calendar");
     check(app.effectiveUiScale(1280,720)<app.effectiveUiScale(1920,1080),"Auto UI scale responds to screen dimensions");
+    app.selectedUnit=-1;app.selectedSite=-1;app.selectedRegion=-1;app.panel=App::None;app.uiScale=1;
+    check(app.mapOverlayHit({20,200},1280,720)&&app.mapOverlayHit({80,650},1280,720),"Permanent deployment rail and circular menu intercept map clicks");
+    check(!app.mapOverlayHit({600,300},1280,720),"Map remains usable between anchored controls");
+    app.panel=App::Build;check(app.mapOverlayHit({600,300},1280,720),"Full navigation pages intercept map input");
     ImGui::DestroyContext();std::cout<<"Passed "<<checks<<" native input integration checks\n";return 0;
   }catch(const std::exception& e){std::cerr<<"Input check failed after "<<checks<<": "<<e.what()<<"\n";ImGui::DestroyContext();return 1;}
 }
