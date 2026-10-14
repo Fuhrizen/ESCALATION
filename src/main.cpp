@@ -811,6 +811,10 @@ int main(int argc,char** argv){
         for(const auto& city:app.sim.state.settlements)if(city.owner==app.sim.state.player&&distanceKm(target,city.position)>60&&distanceKm(target,city.position)<200){if(app.sim.orderUnitAt(0,city.position,true))break;}
         app.center({(origin.x+target.x)*.5,(origin.y+target.y)*.5});app.camera.zoom=20;
       }
+      if(smoke&&frame==40){
+        app.clearSelection();app.panel=App::None;app.camera.globe=true;
+        app.camera.longitude=15;app.camera.latitude=25;app.camera.zoom=.86;
+      }
       app.windowFocused=smoke||glfwGetWindowAttrib(window,GLFW_FOCUSED);
       app.frame(float(w),float(h),smoke?0.016:dt);
       ImGui::Render();
@@ -822,7 +826,7 @@ int main(int argc,char** argv){
         if(gl::GetError()!=0)throw std::runtime_error("OpenGL error during smoke render");
       }
       if(!smoke)glfwSwapBuffers(window);
-      if(smoke&&++frame>=40)break;
+      if(smoke&&++frame>=42)break;
     }
     if(!smoke&&app.sim.state.player>=0)app.save(true);
     app.saveSettings();
