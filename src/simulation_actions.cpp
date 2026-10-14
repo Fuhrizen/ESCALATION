@@ -4,8 +4,8 @@
 #include <limits>
 #include <queue>
 namespace escalation {
-  const std::array<const char*,9> unitNames={
-    "Infantry brigade","Armoured brigade","Artillery battery","Fighter squadron","Bomber squadron","Destroyer","Submarine","Special forces","Missile battery"
+  const std::array<const char*,int(UnitType::Count)> unitNames={
+    "Infantry brigade","Armoured brigade","Artillery battery","Fighter squadron","Bomber squadron","Destroyer","Submarine","Special forces","Missile battery","Cruiser","Cruise missile submarine"
   };
   static bool ground(UnitType t){
     return t==UnitType::Infantry||t==UnitType::Armour||t==UnitType::Artillery||t==UnitType::SpecialForces||t==UnitType::MissileLauncher;
@@ -62,15 +62,15 @@ namespace escalation {
   bool Simulation::upgradeRoad(int){ return false; }
   double Simulation::unitCost(UnitType t) const {
     static double values[]={
-      30,60,45,65,100,110,130,55,160
+      30,60,45,65,100,110,130,55,160,190,210
     };
-    return int(t)>=0&&int(t)<9?values[int(t)]:1e30;
+    return int(t)>=0&&int(t)<int(UnitType::Count)?values[int(t)]:1e30;
   }
   double Simulation::unitDays(UnitType t) const {
     static double values[]={
-      12,20,18,24,35,45,50,25,45
+      12,20,18,24,35,45,50,25,45,65,75
     };
-    return int(t)>=0&&int(t)<9?values[int(t)]:1e30;
+    return int(t)>=0&&int(t)<int(UnitType::Count)?values[int(t)]:1e30;
   }
   double Simulation::unitBuildETA(UnitType type,int site) const {
     if(!unitReason(type,site).empty())return std::numeric_limits<double>::infinity();
@@ -88,14 +88,14 @@ namespace escalation {
     if(state.victory||state.defeat)return "Campaign has ended";
     if(state.units.size()>=1000)return "Campaign unit history capacity reached";
     int n=int(t);
-    if(n<0||n>=9)return "Unknown unit";
+    if(n<0||n>=int(UnitType::Count))return "Unknown unit";
     if(!activeUnit(t))return "Retired air unit";
     if(site<0||site>=int(state.sites.size()))return "Select a production building";
     auto& s=state.sites[site];
     if(s.region<0||s.region>=int(state.regions.size())||s.destroyed||!s.enabled||s.remaining>0||state.regions[s.region].owner!=state.player)return "Production building is not operational";
     Facility needed=navalUnit(t)?Facility::Shipyard:t==UnitType::MissileLauncher?Facility::Silo:Facility::ArmyBase;
     if(s.type!=needed&&!(s.type==Facility::Factory&&ground(t)))return std::string("Requires ")+facilityNames[int(needed)];
-    int prerequisite=t==UnitType::Destroyer?113:t==UnitType::Submarine?114:t==UnitType::Armour?7:t==UnitType::Artillery?9:t==UnitType::SpecialForces?46:t==UnitType::MissileLauncher?62:-1;
+    int prerequisite=t==UnitType::Cruiser?117:t==UnitType::MissileSubmarine?119:t==UnitType::Destroyer?113:t==UnitType::Submarine?114:t==UnitType::Armour?7:t==UnitType::Artillery?9:t==UnitType::SpecialForces?46:t==UnitType::MissileLauncher?62:-1;
     if(prerequisite>=0&&!hasTech(prerequisite))return "Requires "+techs[prerequisite].name;
 
     int alive=0;

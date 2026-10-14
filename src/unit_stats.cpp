@@ -29,6 +29,8 @@ UnitStats unitStats(UnitType type) {
     case UnitType::Artillery:return {.55,90,1.0};
     case UnitType::Destroyer:return {.85,160,1.1};
     case UnitType::Submarine:return {.65,220,.9};
+    case UnitType::Cruiser:return {.75,480,1.8};
+    case UnitType::MissileSubmarine:return {.55,650,1.4};
     case UnitType::Fighter:case UnitType::Bomber:return {0,0,0};
     case UnitType::SpecialForces:return {.8,12,1.2};
     case UnitType::MissileLauncher:return {.6,600,1.2};
@@ -37,9 +39,9 @@ UnitStats unitStats(UnitType type) {
   return {0,0,0};
 }
 bool groundUnit(UnitType t){return t==UnitType::Infantry||t==UnitType::Armour||t==UnitType::Artillery||t==UnitType::SpecialForces||t==UnitType::MissileLauncher;}
-bool navalUnit(UnitType t){return t==UnitType::Destroyer||t==UnitType::Submarine;}
+bool navalUnit(UnitType t){return t==UnitType::Destroyer||t==UnitType::Submarine||t==UnitType::Cruiser||t==UnitType::MissileSubmarine;}
 bool activeUnit(UnitType t){return groundUnit(t)||navalUnit(t);}
-TargetDomain targetDomain(UnitType t){return t==UnitType::Submarine?TargetDomain::Submerged:t==UnitType::Destroyer?TargetDomain::Naval:groundUnit(t)?TargetDomain::Ground:TargetDomain::Air;}
+TargetDomain targetDomain(UnitType t){return (t==UnitType::Submarine||t==UnitType::MissileSubmarine)?TargetDomain::Submerged:navalUnit(t)?TargetDomain::Naval:groundUnit(t)?TargetDomain::Ground:TargetDomain::Air;}
 bool weaponTargets(const WeaponProfile& w,UnitType t){return activeUnit(t)&&(w.targetMask&unsigned(targetDomain(t)))&&(!w.armourOnly||t==UnitType::Armour);}
 std::vector<WeaponProfile> baseWeapons(UnitType t){
   // These are strategic-map gameplay values, not real-world equipment specifications.
@@ -55,6 +57,8 @@ std::vector<WeaponProfile> baseWeapons(UnitType t){
     case UnitType::MissileLauncher:return {weapon("ground_missile","Tactical missiles",ground,12,600,22,24,4,24,20,12,"Guided missile")};
     case UnitType::Destroyer:return {weapon("naval_gun","Coastal gun",ground|naval,0,24,4,4,30,300,10,8,"Direct coastal fire"),weapon("anti_ship","Anti-ship missiles",naval,8,160,12,12,4,20,24,16,"Guided anti-ship missile"),weapon("asw_torpedo","ASW torpedoes",sub,0,32,10,12,4,20,20,1.5,"Anti-submarine torpedo")};
     case UnitType::Submarine:return {weapon("sub_torpedo","Torpedoes",naval|sub,0,40,12,14,4,20,24,1.5,"Submerged torpedo"),weapon("cruise","Cruise missiles",ground,18,220,10,16,4,16,28,14,"Land attack cruise missile")};
+    case UnitType::Cruiser:return {weapon("naval_gun","Naval gun",ground|naval,0,32,6,4,40,320,12,8,"Direct coastal fire"),weapon("anti_ship","Heavy anti-ship missiles",naval,12,280,20,12,8,32,26,16,"Guided anti-ship missile"),weapon("cruise","Land attack cruise missiles",ground,25,480,22,16,12,36,30,14,"Land attack cruise missile"),weapon("asw_torpedo","Defensive ASW torpedoes",sub,0,16,8,16,2,12,26,1.5,"Anti-submarine torpedo")};
+    case UnitType::MissileSubmarine:return {weapon("sub_torpedo","Defensive torpedoes",naval|sub,0,28,8,18,2,12,28,1.5,"Submerged torpedo"),weapon("cruise","Cruise missile salvo",ground,25,650,24,8,16,48,36,14,"Land attack cruise missile")};
     default:return {};
   }
 }
@@ -83,7 +87,7 @@ double Simulation::unitSpeedKmPerSecond(const Unit& unit) const {
 }
 std::vector<WeaponProfile> Simulation::unitWeapons(const Unit& u) const {
   auto weapons=baseWeapons(u.type);
-  if(u.type==UnitType::Destroyer&&(u.owner!=state.player||!hasTech(116)))for(auto& w:weapons)if(w.id=="asw_torpedo"){w.id="depth_charge";w.name="Depth charges";w.behaviour="Snapshot anti-submarine attack";w.maxRangeKm=8;w.damage=4;}
+  if((u.type==UnitType::Destroyer||u.type==UnitType::Cruiser)&&(u.owner!=state.player||!hasTech(116)))for(auto& w:weapons)if(w.id=="asw_torpedo"){w.id="depth_charge";w.name="Depth charges";w.behaviour="Snapshot anti-submarine attack";w.maxRangeKm=8;w.damage=4;}
   if(u.owner!=state.player){weapons.erase(std::remove_if(weapons.begin(),weapons.end(),[](const WeaponProfile& w){return w.id=="anti_ship"||w.id=="cruise";}),weapons.end());return weapons;}
   weapons.erase(std::remove_if(weapons.begin(),weapons.end(),[&](const WeaponProfile& w){return (w.id=="asw_torpedo"&&!hasTech(116))||(w.id=="anti_ship"&&!hasTech(117))||(w.id=="cruise"&&!hasTech(119));}),weapons.end());
   if(u.type==UnitType::Infantry&&hasTech(18)){
@@ -106,7 +110,18 @@ std::vector<WeaponProfile> Simulation::unitWeapons(const Unit& u) const {
 }
 double Simulation::unitRangeKm(const Unit& u) const {double range=0;for(const auto& w:unitWeapons(u))range=std::max(range,w.maxRangeKm);return range;}
 double Simulation::engagementRange(const Unit& a,const Unit& b) const {double range=0;for(const auto& w:unitWeapons(a))if(weaponTargets(w,b.type))range=std::max(range,w.maxRangeKm);return range;}
-bool Simulation::canEngage(const Unit& a,const Unit& b) const {double d=distanceKm(a.position,b.position);for(const auto& w:unitWeapons(a))if(weaponTargets(w,b.type)&&d>=w.minRangeKm&&d<=w.maxRangeKm)return true;return false;}
+bool Simulation::canEngage(const Unit& a,const Unit& b) const {if(!detectsSubmarine(a,b))return false;double d=distanceKm(a.position,b.position);for(const auto& w:unitWeapons(a))if(weaponTargets(w,b.type)&&d>=w.minRangeKm&&d<=w.maxRangeKm)return true;return false;}
+double Simulation::sonarRangeKm(const Unit& u) const {
+  double range=u.type==UnitType::Destroyer?32:u.type==UnitType::Cruiser?16:u.type==UnitType::Submarine?45:u.type==UnitType::MissileSubmarine?28:0;
+  if(u.owner==state.player&&hasTech(120))range*=1.35;
+  return range;
+}
+bool Simulation::detectsSubmarine(const Unit& observer,const Unit& target) const {
+  if(targetDomain(target.type)!=TargetDomain::Submerged||observer.owner==target.owner)return true;
+  double range=sonarRangeKm(observer);
+  if(target.owner==state.player&&hasTech(121))range*=.8;
+  return range>0&&distanceKm(observer.position,target.position)<=range;
+}
 double Simulation::unitDamagePerSecond(const Unit& u,UnitType defender) const {double damage=0;for(const auto& w:unitWeapons(u))if(weaponTargets(w,defender))damage+=w.damage/w.cooldownSeconds;return damage;}
 double Simulation::unitProtection(const Unit& u) const {
   if(u.owner!=state.player||!groundUnit(u.type))return 0;
@@ -121,6 +136,7 @@ int Simulation::readyUnitCount(UnitType type) const {
 std::string Simulation::deploymentReason(UnitType type,Point p) const {
   if(state.player<0||state.victory||state.defeat)return "No active campaign";
   if(!activeUnit(type))return "Retired air unit";
+  if(readyUnitCount(type)<=0)return "Manufacture this formation first";
   if(navalUnit(type)){
     if(!std::isfinite(p.x)||!std::isfinite(p.y)||p.y< -90||p.y>90)return "Place in coastal water";
     if(world_->pick(p)>=0)return "Place in coastal water";
@@ -128,7 +144,6 @@ std::string Simulation::deploymentReason(UnitType type,Point p) const {
     bool yard=false;for(const auto& site:state.sites)if(site.type==Facility::Shipyard&&!site.destroyed&&site.enabled&&site.remaining<=0&&site.region>=0&&site.region<int(state.regions.size())&&state.regions[site.region].owner==state.player&&distanceKm(p,site.position)<=30)yard=true;
     return yard?"":"Deploy within 30 km of an operational friendly shipyard";
   }
-  if(readyUnitCount(type)<=0)return "Manufacture this formation first";
   if(!std::isfinite(p.x)||!std::isfinite(p.y)||p.y< -90||p.y>90)return "Place on controlled land";
   int r=regionAt(p);if(r<0||state.regions[r].owner!=state.player)return "Place on controlled land";
   return "";
@@ -152,6 +167,7 @@ std::vector<Capability> Simulation::unitCapabilities(size_t index) const {
   result.push_back({"Damage protection",number(unitProtection(u)*100)+"%","shield",u.deployed});
   if(groundUnit(u.type)&&u.type!=UnitType::MissileLauncher)result.push_back({"Settlement occupation","Requires presence within 5 km","capture",u.deployed});
   if(u.type==UnitType::Infantry&&u.owner==state.player&&hasTech(18))result.push_back({"Anti-tank weapons",number(unitDamagePerSecond(u,UnitType::Armour))+" /s against armour","weapon",u.deployed});
+  if(navalUnit(u.type))result.push_back({"Sonar",number(sonarRangeKm(u))+" km submarine detection radius","shield",u.deployed});
   if(navalUnit(u.type))result.push_back({"Port service",number(u.portServiceSeconds)+" / 30s","factory",u.deployed&&!u.moving});
   if(u.owner==state.player&&hasTech(12))result.push_back({"Field medicine","Recover 0.10 health/s while disengaged","medical",u.deployed});
   if(u.type==UnitType::Infantry&&u.owner==state.player&&hasTech(6))result.push_back({"Body armour","Infantry incoming damage -10%","shield",u.deployed});
@@ -175,7 +191,7 @@ std::vector<Capability> Simulation::siteCapabilities(size_t index) const {
       if(source&&(prerequisite<0||hasTech(prerequisite)))result.push_back({"Manufacture",unitNames[int(type)],"factory",active});
     }
   }
-  if(site.type==Facility::Shipyard){if(hasTech(113))result.push_back({"Manufacture","Destroyer","factory",active});if(hasTech(114))result.push_back({"Manufacture","Submarine","factory",active});}
+  if(site.type==Facility::Shipyard){if(hasTech(117))result.push_back({"Manufacture","Cruiser","factory",active});if(hasTech(119))result.push_back({"Manufacture","Cruise missile submarine","factory",active});if(hasTech(113))result.push_back({"Manufacture","Destroyer","factory",active});if(hasTech(114))result.push_back({"Manufacture","Submarine","factory",active});}
   bool laboratory=false;for(const auto& lab:state.sites)if(lab.type==Facility::Laboratory&&!lab.destroyed&&lab.enabled&&lab.remaining<=0&&lab.region>=0&&lab.region<int(state.regions.size())&&state.regions[lab.region].owner==state.player)laboratory=true;
   if(site.type==Facility::Factory&&hasTech(59)&&hasTech(87))result.push_back({"Strategic manufacture","Warheads; requires an operational research centre","factory",active&&laboratory});
   if(site.type==Facility::Silo&&hasTech(58))result.push_back({"Ballistic delivery",std::to_string(int(siteMissileRange(index)))+" km; conventional ground strike; 45s reload","weapon",active});

@@ -24,7 +24,8 @@ namespace escalation {
     for(size_t n=0;n<state.sites.size();++n){const auto& yard=state.sites[n];if(yard.type==Facility::Shipyard&&!yard.destroyed&&yard.enabled&&yard.remaining<=0&&yard.region>=0&&yard.region<int(state.regions.size())&&state.regions[yard.region].owner==ship.owner)yards.push_back(n);}
     std::sort(yards.begin(),yards.end(),[&](size_t a,size_t b){return distanceKm(ship.position,state.sites[a].position)<distanceKm(ship.position,state.sites[b].position);});
     for(size_t index:yards){const auto& yard=state.sites[index];for(double radius:{5.0,10.0,20.0})for(int n=0;n<24;++n){double a=n*6.28318530718/24;Point p{yard.position.x+radius/111.2*std::cos(a)/std::max(.2,std::cos(yard.position.y*.01745329252)),yard.position.y+radius/111.2*std::sin(a)};
-      if(!deploymentReason(ship.type,p).empty())continue;
+      // Returning an existing ship does not consume ready deployment inventory.
+      if(world_->pick(p)>=0||world_->canonical(nearestCoastNation(*world_,p))!=ship.owner||distanceKm(p,yard.position)>30)continue;
       Unit planned=ship;if(!planUnitMovement(planned,p))continue;
       planned.pendingDestinations.clear();planned.portServiceSeconds=0;state.units[i]=std::move(planned);log("Return to port ordered");return true;
     }}

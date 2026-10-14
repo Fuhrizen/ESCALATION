@@ -213,10 +213,14 @@ int main(){try{
   bool waterRoute=false;for(int a=0;a<32;++a){double angle=a*6.28318530718/32;Point p{waterPoint.x+.03*std::cos(angle),waterPoint.y+.03*std::sin(angle)};if(w.pick(p)<0&&navy.orderUnitAt(ship,p)){waterRoute=true;break;}}
   check(waterRoute&&std::isfinite(navy.unitArrivalETA(ship)),"ocean route has finite naval arrival estimate");
   check(navy.orderUnitAt(ship,waterPoint,true)&&navy.state.units[ship].pendingDestinations.size()==1,"naval movement supports queued ocean destinations");
+  for(int tech:{115,117,118,119})navy.state.completed[tech]=true;
+  check(navy.queueUnit(UnitType::Cruiser,yard)&&navy.queueUnit(UnitType::MissileSubmarine,yard),"advanced naval research unlocks cruiser and SSGN production at shipyards");
+  navy.state.units[navy.state.units.size()-2].remaining=0;navy.state.units.back().remaining=0;
   size_t mounts=baseWeapons(UnitType::Destroyer).size();navy.state.units[ship].weaponCooldowns.assign(mounts,2);navy.state.units[ship].weaponReloads.assign(mounts,3);navy.state.units[ship].weaponAmmo.assign(mounts,1);navy.state.units[ship].weaponReserve.assign(mounts,7);navy.save(save);
   Simulation navyRestored(w);navyRestored.load(save);
   check(navyRestored.state.units[ship].moving&&navyRestored.state.units[ship].pendingDestinations.size()==1&&navyRestored.state.units[ship].weaponAmmo==navy.state.units[ship].weaponAmmo,"naval route queue and weapon state survive v7 save");
   check(navyRestored.readyUnitCount(UnitType::Submarine)==1,"naval ready inventory survives saves");
+  check(navyRestored.readyUnitCount(UnitType::Cruiser)==1&&navyRestored.readyUnitCount(UnitType::MissileSubmarine)==1,"appended advanced naval platform IDs survive save/load");
   auto& serviced=navyRestored.state.units[ship];navyRestored.holdUnit(ship);serviced.position=serviced.destination=waterPoint;serviced.health=60;serviced.weaponAmmo.assign(mounts,0);serviced.weaponReserve.assign(mounts,0);serviced.portServiceSeconds=0;
   for(int n=0;n<int(29/simulationTickSeconds);++n)navyRestored.tick();
   check(serviced.weaponAmmo.front()==0,"naval rearm requires a complete uninterrupted service cycle");

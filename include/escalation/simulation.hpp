@@ -4,6 +4,8 @@
 #include <deque>
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <cstdint>
 namespace escalation {
   constexpr double simulationTickSeconds=0.25;
   double distanceKm(Point a,Point b);
@@ -21,8 +23,8 @@ namespace escalation {
     Mine,OilWell,Steelworks,Refinery,Factory,PowerPlant,Laboratory,Depot,Shipyard,Silo,ArmyBase,Airbase,Radar,Farm,IndustrialPark,Commercial,Count
   };
   extern const std::array<const char*,16> facilityNames;
-  enum class UnitType { Infantry, Armour, Artillery, Fighter, Bomber, Destroyer, Submarine, SpecialForces, MissileLauncher, Count };
-  extern const std::array<const char*,9> unitNames;
+  enum class UnitType { Infantry, Armour, Artillery, Fighter, Bomber, Destroyer, Submarine, SpecialForces, MissileLauncher, Cruiser, MissileSubmarine, Count };
+  extern const std::array<const char*,int(UnitType::Count)> unitNames;
   enum class TargetDomain : unsigned { Ground=1, Naval=2, Submerged=4, Air=8 };
   struct WeaponProfile {
     std::string id,name,behaviour;
@@ -112,6 +114,8 @@ namespace escalation {
     int region=-1,owner=-1;
     double capture=0;
   };
+  struct TerritoryCell { int region=-1,owner=-1; bool occupied=false; };
+  constexpr double territoryCellDegrees=0.1;
   struct Campaign {
     int player=-1,enemy=-1,day=0,capital=0,enemyCapital=0,target=-1;
     double money=8000,stability=100,brigades=4,researchBudget=0.5;
@@ -121,6 +125,8 @@ namespace escalation {
     std::array<double,resourceCount> stock{},delta{};
     std::array<int,9> levels{};
     std::vector<Region> regions;
+    std::unordered_map<int,TerritoryCell> territory;
+    std::uint64_t territoryRevision=0;
     std::vector<Settlement> settlements;
     std::vector<Site> sites;
     std::vector<Unit> units;
@@ -138,6 +144,7 @@ namespace escalation {
   };
   class Simulation {
     const World* world_;
+    std::size_t territoryFingerprint_=0;
     void log(const std::string& text);
     void economy(bool advance=true);
     bool productionSiteActive(const Site& site) const;
@@ -147,10 +154,12 @@ namespace escalation {
     double prospectiveProductionRate() const;
     void researchTick();
     void combat();
+    void updateTerritory();
     void unitsTick();
     bool planUnitMovement(Unit& unit,Point destination) const;
     public: std::vector<Tech> techs;
     Campaign state;
+    std::uint64_t campaignRevision=0;
     explicit Simulation(const World& world):world_(&world),techs(makeTechTree()){} void start(int nation,Field focus=Field::Economy,bool simpleEconomy=true);
     void tick();
     void refreshRates(){economy(false);}
@@ -174,11 +183,16 @@ namespace escalation {
     bool canEngage(const Unit& attacker,const Unit& defender) const;
     int mainSettlement(int region) const;
     double frontlinePressure(Point position) const;
+    int territoryOwner(Point position) const;
+    static int territoryKey(Point position);
+    static Point territoryCenter(int key);
     double roadMovementBonus(Point position) const;
     bool hasTech(int tech) const;
     bool visibleResearch(int tech) const;
     std::vector<Capability> unitCapabilities(size_t index) const;
     std::vector<Capability> siteCapabilities(size_t index) const;
+    double sonarRangeKm(const Unit& unit) const;
+    bool detectsSubmarine(const Unit& observer,const Unit& target) const;
     double unitDamagePerSecond(const Unit& unit,UnitType defender=UnitType::Infantry) const;
     double unitProtection(const Unit& unit) const;
     int readyUnitCount(UnitType type) const;

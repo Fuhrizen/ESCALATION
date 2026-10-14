@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <unordered_map>
 
 namespace escalation {
 namespace {
@@ -154,6 +155,11 @@ void Simulation::combat(){
     if(shot.remaining<=0&&shot.damage>0)shot.impactSeconds=shot.nuclear?3.0:1.5;
   }
   state.engagements.erase(std::remove_if(state.engagements.begin(),state.engagements.end(),[](const Engagement& shot){return shot.remaining<=0&&shot.impactSeconds<=0;}),state.engagements.end());
+  // Build once per simulation tick, rather than scan every formation per mount.
+  // Five-degree buckets conservatively cover weapon envelopes, including the seam.
+  std::unordered_map<int,std::vector<size_t>> targetBuckets;
+  auto bucket=[](Point p){double x=std::fmod(p.x+180,360);if(x<0)x+=360;return std::pair<int,int>{std::clamp(int(x/5),0,71),std::clamp(int((p.y+90)/5),0,35)};};
+  for(size_t b=0;b<state.units.size();++b)if(ready(state.units[b])){auto xy=bucket(state.units[b].position);targetBuckets[xy.second*72+xy.first].push_back(b);}
   // Each mount chooses one eligible target and consumes its own ammunition.
   // Every launch is selected before damage is applied, preserving mutual fire.
   for(size_t a=0;a<state.units.size();++a){
@@ -173,10 +179,21 @@ void Simulation::combat(){
       if(ua.weaponAmmo[n]<=0){if(ua.weaponReloads[n]==0&&ua.weaponReserve[n]>0)ua.weaponReloads[n]=weapon.reloadSeconds;continue;}
       if(ua.weaponCooldowns[n]>0||ua.weaponReloads[n]>0)continue;
       int target=-1;double nearest=std::numeric_limits<double>::max();
-      for(size_t b=0;b<state.units.size();++b){
-        const auto& ub=state.units[b];if(a==b||!ready(ub)||ua.owner==ub.owner||!weaponTargets(weapon,ub.type))continue;
-        double d=distanceKm(ua.position,ub.position);
-        if(d>=weapon.minRangeKm&&d<=weapon.maxRangeKm&&d<nearest){nearest=d;target=int(b);}
+      auto xy=bucket(ua.position);
+      double latitudeRadius=weapon.maxRangeKm/110.0;
+      double polarLatitude=std::min(90.0,std::abs(ua.position.y)+latitudeRadius);
+      int latitudeBuckets=std::min(35,int(std::ceil(latitudeRadius/5))+1);
+      int longitudeBuckets=std::min(36,int(std::ceil(latitudeRadius/(5*std::max(.001,std::cos(polarLatitude*.01745329252)))))+1);
+      for(int by=std::max(0,xy.second-latitudeBuckets);by<=std::min(35,xy.second+latitudeBuckets);++by){
+        int width=longitudeBuckets==36?72:longitudeBuckets*2+1;
+        for(int offset=0;offset<width;++offset){int bx=longitudeBuckets==36?offset:(xy.first-longitudeBuckets+offset+72)%72;
+          auto candidates=targetBuckets.find(by*72+bx);if(candidates==targetBuckets.end())continue;
+          for(size_t b:candidates->second){
+            const auto& ub=state.units[b];if(a==b||!ready(ub)||ua.owner==ub.owner||!weaponTargets(weapon,ub.type)||!detectsSubmarine(ua,ub))continue;
+            double d=distanceKm(ua.position,ub.position);
+            if(d>=weapon.minRangeKm&&d<=weapon.maxRangeKm&&(d<nearest||(d==nearest&&int(b)<target))){nearest=d;target=int(b);}
+          }
+        }
       }
       if(target<0)continue;
       --ua.weaponAmmo[n];ua.weaponCooldowns[n]=weapon.cooldownSeconds;
@@ -198,12 +215,14 @@ void Simulation::combat(){
     if(u.health<=0){u.moving=false;u.path.clear();u.waypoints.clear();u.pendingDestinations.clear();}
   }
   if(!state.war)return;
+  std::vector<std::vector<size_t>> occupationUnits(state.regions.size());
+  for(size_t i=0;i<state.units.size();++i){const auto& u=state.units[i];if(ready(u)&&occupying(u.type)&&u.region>=0&&u.region<int(occupationUnits.size()))occupationUnits[u.region].push_back(i);}
   for(size_t cityIndex=0;cityIndex<state.settlements.size();++cityIndex){
     auto& city=state.settlements[cityIndex];
     double player=0,enemy=0;
-    for(const auto& u:state.units)if(ready(u)&&occupying(u.type)&&u.region==city.region&&regionAt(u.position)==city.region&&distanceKm(u.position,city.position)<=5){
+    if(city.region>=0&&city.region<int(occupationUnits.size()))for(size_t i:occupationUnits[city.region]){const auto& u=state.units[i];if(distanceKm(u.position,city.position)<=5&&regionAt(u.position)==city.region){
       if(u.owner==state.player)player+=strength(u);else if(u.owner==state.enemy)enemy+=strength(u);
-    }
+    }}
     double attackers=city.owner==state.enemy?player:enemy,defenders=city.owner==state.enemy?enemy:player;
     // Opposing troops must be removed before occupation can finish. Defenders
     // recover an abandoned objective; a contested city preserves its progress.

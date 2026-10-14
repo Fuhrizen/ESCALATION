@@ -19,6 +19,8 @@ namespace escalation {
     if(int(focus)<0||int(focus)>=9)throw std::runtime_error("Invalid research specialization");
     nation=world_->canonical(nation);
     state=Campaign{};
+    territoryFingerprint_=0;
+    ++campaignRevision;
     (void)simpleEconomy;
     state.simpleEconomy=true;
     state.player=nation;
@@ -367,6 +369,7 @@ namespace escalation {
     researchTick();
     unitsTick();
     combat();
+    updateTerritory();
     for(int i=0;i<resourceCount;++i)state.delta[i]=state.stock[i]-before[i];
   }
   bool Simulation::produceWarhead(){
@@ -390,7 +393,7 @@ namespace escalation {
     auto n=[&](const char* k,double v){
       o[k]=num(v);
     };
-    n("version",8);
+    n("version",9);
     n("simple",state.simpleEconomy);
     o["player"]=str(world_->countries[state.player].code);
     o["enemy"]=str(world_->countries[state.enemy].code);
@@ -442,6 +445,9 @@ namespace escalation {
     Array ready;for(int count:state.buildingInventory)ready.push_back(num(count));o["buildingInventory"]=Json(ready);
     Array units;for(auto& u:state.units){Object v;v["owner"]=str(world_->countries[u.owner].code);v["region"]=num(u.region);v["target"]=num(u.target);v["source"]=num(u.sourceSite);v["type"]=num(int(u.type));v["x"]=num(u.position.x);v["y"]=num(u.position.y);v["dx"]=num(u.destination.x);v["dy"]=num(u.destination.y);v["health"]=num(u.health);v["remaining"]=num(u.remaining);v["total"]=num(u.total);v["moving"]=num(u.moving);v["deployed"]=num(u.deployed);v["portServiceSeconds"]=num(u.portServiceSeconds);Array path;for(int r:u.path)path.push_back(num(r));v["path"]=Json(path);Array waypoints;for(Point p:u.waypoints){Array xy{num(p.x),num(p.y)};waypoints.push_back(Json(xy));}v["waypoints"]=Json(waypoints);Array pending;for(Point p:u.pendingDestinations){Array xy{num(p.x),num(p.y)};pending.push_back(Json(xy));}v["pendingDestinations"]=Json(pending);auto doubles=[&](const char* key,const std::vector<double>& values){Array a;for(double x:values)a.push_back(num(x));v[key]=Json(a);};auto ints=[&](const char* key,const std::vector<int>& values){Array a;for(int x:values)a.push_back(num(x));v[key]=Json(a);};doubles("weaponCooldowns",u.weaponCooldowns);doubles("weaponReloads",u.weaponReloads);ints("weaponAmmo",u.weaponAmmo);ints("weaponReserve",u.weaponReserve);units.push_back(Json(v));}o["units"]=Json(units);
     Array engagements;for(const auto& e:state.engagements){Object v;v["ox"]=num(e.origin.x);v["oy"]=num(e.origin.y);v["tx"]=num(e.target.x);v["ty"]=num(e.target.y);v["attacker"]=num(e.attacker);v["defender"]=num(e.defender);v["weapon"]=str(e.weaponId);v["mask"]=num(e.targetMask);v["guided"]=num(e.guided);v["ballistic"]=num(e.ballistic);v["nuclear"]=num(e.nuclear);v["areaStrike"]=num(e.areaStrike);v["impactSeconds"]=num(e.impactSeconds);v["owner"]=num(e.owner);v["sourceSite"]=num(e.sourceSite);v["damage"]=num(e.damage);v["remaining"]=num(e.remaining);v["total"]=num(e.total);v["radius"]=num(e.impactRadiusKm);engagements.push_back(Json(v));}o["engagements"]=Json(engagements);
+    Array territory;
+    for(const auto& cell:state.territory){if(cell.second.region<0||!cell.second.occupied)continue;Object v;v["key"]=num(cell.first);v["region"]=num(cell.second.region);v["owner"]=num(cell.second.owner);territory.push_back(Json(v));}
+    o["territory"]=Json(territory);
     Array routes;
     for(auto& r:state.routes){
       Object v;
@@ -500,7 +506,7 @@ namespace escalation {
       if(std::floor(v)!=v)throw std::runtime_error("Non-integral save index");
       return int(v);
     };
-    int version=integer(o,"version",1,8);
+    int version=integer(o,"version",1,9);
     int player=world_->find(string(o,"player")),enemy=world_->find(string(o,"enemy"));
     Simulation candidate(*world_);
     candidate.start(player,Field(integer(o,"focus",0,version>=7?8:7)),version>=2?bool(integer(o,"simple",0,1)):false);
@@ -568,6 +574,12 @@ namespace escalation {
       for(const auto& city:cities){Settlement v;v.name=string(city,"name");if(v.name.empty()||v.name.size()>200)throw std::runtime_error("Invalid settlement name");v.position={bounded(city,"x",-720,720),bounded(city,"y",-90,90)};v.population=bounded(city,"population",0,1e9);v.region=integer(city,"region",0,int(c.regions.size())-1);v.owner=world_->find(string(city,"owner"));if(v.owner!=c.player&&v.owner!=c.enemy)throw std::runtime_error("Invalid settlement owner");v.capture=bounded(city,"capture",0,1);++objectives[v.region];c.settlements.push_back(v);}
       for(int count:objectives)if(!count)throw std::runtime_error("Region has no capture objective");
     }else for(auto& city:c.settlements){city.owner=c.regions[city.region].owner;city.capture=c.regions[city.region].capture;}
+    if(version>=9){
+      const auto& cells=asArray(field(o,"territory"));
+      if(cells.size()>2000000)throw std::runtime_error("Too many territory cells");
+      for(const auto& cell:cells){int key=integer(cell,"key",0,3600*1800-1);TerritoryCell value{integer(cell,"region",0,int(c.regions.size())-1),integer(cell,"owner",0,int(world_->countries.size())-1)};value.occupied=true;if(value.owner!=c.player&&value.owner!=c.enemy)throw std::runtime_error("Invalid territory owner");if(!c.territory.emplace(key,value).second)throw std::runtime_error("Duplicate territory cell");}
+      ++c.territoryRevision;
+    }
     c.sites.clear();
     auto& sites=asArray(field(o,"sites"));
     if(sites.size()>1000)throw std::runtime_error("Too many sites");
@@ -590,7 +602,7 @@ namespace escalation {
         u.region=integer(v,"region",0,int(c.regions.size())-1);
         u.target=integer(v,"target",-1,int(c.regions.size())-1);
         u.sourceSite=integer(v,"source",-1,int(c.sites.size())-1);
-        u.type=UnitType(integer(v,"type",0,8));
+        u.type=UnitType(integer(v,"type",0,int(UnitType::Count)-1));
         u.position={bounded(v,"x",-720,720),bounded(v,"y",-90,90)};
         u.destination={bounded(v,"dx",-720,720),bounded(v,"dy",-90,90)};
         u.health=bounded(v,"health",0,100);
@@ -700,5 +712,7 @@ namespace escalation {
     c.lastAutosave=c.day;
     candidate.log("Campaign restored");
     state=std::move(c);
+    territoryFingerprint_=0;
+    ++campaignRevision;
   }
 }

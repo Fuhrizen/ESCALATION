@@ -69,7 +69,7 @@
     return player?IM_COL32(60,194,188,alpha):IM_COL32(244,131,78,alpha);
   }
   void pressureOverlay(ImDrawList* draw){
-    if(!showPressure||!sim.state.war||camera.zoom<3)return;
+    if(!showPressure||sim.state.player<0||camera.zoom<3)return;
     // A signed ownership field has a boundary even where neither army is near.
     // Pressure bends that boundary; it does not replace it with isolated blobs.
     constexpr float cell=10;
@@ -77,8 +77,10 @@
     size_t fingerprint=0;auto hash=[&](double v){fingerprint^=std::hash<double>{}(v)+0x9e3779b9+(fingerprint<<6)+(fingerprint>>2);};
     for(double v:{camera.longitude,camera.latitude,camera.zoom,double(camera.globe),double(camera.x),double(camera.y),double(camera.width),double(camera.height)})hash(v);
     for(const auto& r:sim.state.regions)hash(r.owner);
-    // Refresh pressure on simulation ticks, avoiding expensive polygon picks per frame.
-    hash(std::floor(ImGui::GetTime()*8));
+    // Rebuild only on a camera or ownership revision; paused fronts do no sampling work.
+    hash(double(sim.state.territoryRevision));
+    hash(double(sim.campaignRevision));
+    hash(double(sim.state.player));
     if(fingerprint!=frontFingerprint||frontColumns!=columns||frontRows!=rows){
       frontFingerprint=fingerprint;frontColumns=columns;frontRows=rows;
       frontSamples.assign(size_t(columns)*rows,{});
@@ -87,8 +89,8 @@
       for(int y=0;y<rows;++y)for(int x=0;x<columns;++x){
         size_t id=size_t(y)*columns+x;auto& sample=frontSamples[id];sample.screen={camera.x+x*cell,camera.y+y*cell};
         auto geo=camera.unproject(sample.screen);if(!geo)continue;sample.geo=*geo;int region=sim.regionAt(*geo);if(region<0)continue;
-        sample.side=sim.state.regions[region].owner==sim.state.player?1:-1;
-        sample.pressure=sim.frontlinePressure(*geo);
+        sample.side=sim.territoryOwner(*geo)==sim.state.player?1:-1;
+        sample.pressure=0;
         distance[sample.side>0?0:1][id]=0;
       }
       // Two chamfer sweeps yield distance to each army's territory. Distances
@@ -123,7 +125,7 @@
       for(int e=0;e<3;++e){const auto& from=*triangle[e];const auto& to=*triangle[(e+1)%3];if(!from.side||!to.side||(from.value>=0)==(to.value>=0))continue;
         double t=from.value/(from.value-to.value);crossings.push_back({from.screen.x+(to.screen.x-from.screen.x)*t,from.screen.y+(to.screen.y-from.screen.y)*t});}
       if(crossings.size()!=2)return;Point p=crossings[0],q=crossings[1],mid{(p.x+q.x)*.5,(p.y+q.y)*.5};
-      auto geo=camera.unproject(mid);if(!geo||sim.regionAt(*geo)<0)return;
+      // All contributing samples are land; reuse the cached geographic field.
       double length=std::hypot(q.x-p.x,q.y-p.y);if(length<.05)return;
       double nx=-(q.y-p.y)/length,ny=(q.x-p.x)/length;
       // Orient the positive side using the ownership field inside this triangle.
@@ -214,7 +216,7 @@
     // Coordinates: official Eiffel access map, UNESCO property maps (Liberty,
     // Giza pyramid fields). Symbolic original meshes, no downloaded artwork.
     static const Monument monuments[]={{"Eiffel Tower",{2.2945,48.8584},0},{"Statue of Liberty",{-74.044722,40.689444},1},{"Giza pyramid fields",{31.13041,29.97604},2}};
-    for(const auto& monument:monuments){bool visible=false;auto p=camera.project(monument.position,&visible);if(!visible)continue;float scale=(.7f+.6f*reveal(camera.zoom,30,120))*uiScale;
+    for(const auto& monument:monuments){bool visible=false;auto p=camera.project(monument.position,&visible);if(!visible||p.x<camera.x-50||p.x>camera.x+camera.width+50||p.y<camera.y-50||p.y>camera.y+camera.height+90)continue;float scale=(.7f+.6f*reveal(camera.zoom,30,120))*uiScale;
       auto at=[&](float x,float y,float z){return ImVec2{float(p.x)+(x-y)*scale,float(p.y)+(x+y)*.4f*scale-z*scale};};
       auto color=[&](int r,int g,int b){return IM_COL32(r,g,b,int(255*fade));};
       draw->AddEllipseFilled({float(p.x)+6*scale,float(p.y)+3*scale},{13*scale,5*scale},IM_COL32(0,6,13,int(95*fade)),0,24);
@@ -243,10 +245,16 @@
       auto& s=sim.state;
       if(showCities){
         std::vector<size_t> order(s.settlements.size());for(size_t n=0;n<order.size();++n)order[n]=n;
-        std::stable_sort(order.begin(),order.end(),[&](size_t a,size_t b){bool ma=sim.mainSettlement(s.settlements[a].region)==int(a),mb=sim.mainSettlement(s.settlements[b].region)==int(b);if(ma!=mb)return ma;return s.settlements[a].population>s.settlements[b].population;});
+        // Find regional capitals in one pass. Calling mainSettlement from the
+        // sort comparator repeatedly scans every settlement on every frame.
+        std::vector<int> capitals(s.regions.size(),-1);
+        for(size_t n=0;n<s.settlements.size();++n){const auto& city=s.settlements[n];if(city.region<0||city.region>=int(capitals.size()))continue;auto& best=capitals[city.region];if(best<0||city.population>s.settlements[best].population)best=int(n);}
+        auto mainCity=[&](size_t n){int r=s.settlements[n].region;return r>=0&&r<int(capitals.size())&&capitals[r]==int(n);};
+        std::stable_sort(order.begin(),order.end(),[&](size_t a,size_t b){bool ma=mainCity(a),mb=mainCity(b);if(ma!=mb)return ma;return s.settlements[a].population>s.settlements[b].population;});
         std::vector<Point> labels;
-        for(auto n:order){const auto& city=s.settlements[n];bool main=sim.mainSettlement(city.region)==int(n);bool visible=false;auto p=camera.project(city.position,&visible);if(!visible)continue;
+        for(auto n:order){const auto& city=s.settlements[n];bool main=mainCity(n);bool visible=false;auto p=camera.project(city.position,&visible);if(!visible||p.x<camera.x-40||p.x>camera.x+camera.width+40||p.y<camera.y-60||p.y>camera.y+camera.height+40)continue;
           ImU32 c=city.owner==s.player?IM_COL32(142,201,249,255):IM_COL32(255,153,95,255);float r=main?4.2f:2.7f;
+          if(camera.zoom>25)cityMesh(draw,p,city.population,c,selectedSettlement==int(n));
           if(selectedSettlement==int(n))draw->AddCircle(vec(p),r+9,IM_COL32(226,241,255,255),24,2);
           draw->AddCircleFilled(vec(p),r+2,IM_COL32(8,17,28,240));draw->AddCircleFilled(vec(p),r,c);
           if(main)draw->AddCircle(vec(p),r+3,IM_COL32(234,213,167,200),20,1.0f);
