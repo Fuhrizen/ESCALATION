@@ -1,4 +1,4 @@
-// Included inside App. The complete DAG fixes positions; visibility gates every UI surface.
+// Included inside App. All technologies remain visible; prerequisites gate research, not discovery.
   int researchSelected=-1;
   float researchZoom=1.0f;
   ImVec2 researchPan{32,32};
@@ -46,25 +46,27 @@
   void researchTree(float w,float h){
     auto& s=sim.state;
     static char search[96]{};
-    const float rail=pageSafeLeft(),top=hudHeight();
+    const float rail=0,top=hudHeight(),headerHeight=56*uiScale;
     const float nav=std::clamp(w*.17f,180.0f*uiScale,240.0f*uiScale);
     const float queueWidth=std::clamp(w*.155f,170.f*uiScale,230.f*uiScale);
     const ImU32 cyan=IM_COL32(43,188,246,255), pale=IM_COL32(217,234,247,255),soft=IM_COL32(134,176,204,255),green=IM_COL32(78,216,183,255);
     const int categories[]={0,4,1,2,5,6,7,8};
     const char* labels[]={"Ground forces","Missiles","Defence","Sensors","Industry","Science","Logistics","Navy"};
     const int icons[]={2,9,3,4,5,6,7,14};
-    auto categoryName=[&](){for(int k=0;k<8;++k)if(categories[k]==focus)return labels[k];return "Special operations";};
+    auto categoryName=[&](){if(focus==-1)return "All technologies";for(int k=0;k<8;++k)if(categories[k]==focus)return labels[k];return "Special operations";};
     auto queueIndex=[&](int id){for(size_t q=0;q<s.research.size();++q)if(s.research[q].tech==id)return int(q);return -1;};
-    auto visible=[&](int id){return id>=0&&id<int(sim.techs.size())&&sim.visibleResearch(id);};
-    auto belongs=[&](int id){if(id<0||id>=int(sim.techs.size()))return false;if(int(sim.techs[id].field)==focus)return true;for(int p:sim.techs[id].prerequisites)if(int(sim.techs[p].field)==focus)return true;return false;};
+    auto visible=[&](int id){return id>=0&&id<int(sim.techs.size());};
+    auto belongs=[&](int id){if(id<0||id>=int(sim.techs.size()))return false;if(focus==-1)return true;if(int(sim.techs[id].field)==focus)return true;for(int p:sim.techs[id].prerequisites)if(int(sim.techs[p].field)==focus)return true;return false;};
     if(!visible(researchSelected)||!belongs(researchSelected))researchSelected=-1;
     bool fit=treeFocus||researchField!=focus,centerCurrent=false;
     researchField=focus;treeFocus=false;
     ImGui::SetNextWindowPos({rail,top});ImGui::SetNextWindowSize({w-rail,h-top});
     ImGui::PushStyleColor(ImGuiCol_WindowBg,{.008f,.025f,.044f,.95f});
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
-    ImGui::Begin("##researchpage",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoBringToFrontOnFocus);
-    ImGui::BeginChild("##researchnav",{nav,std::max(210.0f,h-top-24.f*uiScale)},ImGuiChildFlags_None);
+    ImGui::Begin("##researchpage",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoBringToFrontOnFocus|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
+    managementPageHeader(w);
+    ImGui::SetCursorPos({0,headerHeight});
+    ImGui::BeginChild("##researchnav",{nav,std::max(210.0f,h-top-headerHeight)},ImGuiChildFlags_None);
     auto* nd=ImGui::GetWindowDrawList();auto np=ImGui::GetWindowPos();
     nd->AddRectFilled(np,{np.x+nav,np.y+h-top},IM_COL32(4,15,28,215));
     nd->AddLine({np.x+nav-1,np.y},{np.x+nav-1,h},IM_COL32(32,88,109,180));
@@ -80,12 +82,14 @@
       nd->AddLine({a.x+10,a.y+52},{a.x+nav-26,a.y+52},IM_COL32(24,52,72,255));ImGui::PopID();
     }
     if(focus==0||focus==3){ImGui::SetCursorPos({36,110});if(ImGui::Selectable("Special operations",focus==3,0,{nav-54,26})){focus=3;researchSelected=-1;search[0]=0;fit=true;researchField=focus;}}
+    ImGui::SetCursorPos({16,58.0f+8*54+((focus==0||focus==3)?26.0f:0.0f)});
+    if(ImGui::Selectable("All technologies",focus==-1,0,{nav-32,36})){focus=-1;researchSelected=-1;search[0]=0;fit=true;researchField=focus;}
     ImGui::EndChild();ImGui::SameLine(0,0);
     ImGui::BeginChild("##researchworkspace",{w-rail-nav-queueWidth,0},ImGuiChildFlags_None,ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::SetCursorPos({26,23});if(titleFont)ImGui::PushFont(titleFont);ImGui::SetWindowFontScale(1.65f);ImGui::TextColored({.89f,.95f,.99f,1},"%s",categoryName());ImGui::SetWindowFontScale(1);if(titleFont)ImGui::PopFont();
-    ImGui::SetCursorPos({27,67});ImGui::TextColored({.51f,.71f,.85f,1},"REVEALED TECHNOLOGIES");
-    ImGui::SetCursorPos({27,102});if(button("Fit"))fit=true;ImGui::SameLine();if(button("Current")){for(const auto& job:s.research)if(visible(job.tech)&&belongs(job.tech)){researchSelected=job.tech;break;}fit=true;centerCurrent=true;}ImGui::SameLine();
-    ImGui::SetNextItemWidth(210);ImGui::InputTextWithHint("##researchsearch","Search revealed technology",search,sizeof(search));ImGui::SameLine();ImGui::Checkbox("Auto queue",&autoResearch);
+    ImGui::SetCursorPos({27,67});ImGui::TextColored({.51f,.71f,.85f,1},"COMPLETE TECHNOLOGY TREE");
+    ImGui::SetCursorPos({27,102});if(button("Fit"))fit=true;ImGui::SameLine();if(button("Current")){for(const auto& job:s.research)if(visible(job.tech)&&belongs(job.tech)){researchSelected=job.tech;break;}fit=true;centerCurrent=true;}ImGui::SameLine();if(button("-##researchzoom"))researchZoom=std::max(.12f,researchZoom/1.15f);ImGui::SameLine();if(button("+##researchzoom"))researchZoom=std::min(2.5f,researchZoom*1.15f);ImGui::SameLine();
+    ImGui::SetNextItemWidth(180);ImGui::InputTextWithHint("##researchsearch","Search all technology",search,sizeof(search));ImGui::SameLine();ImGui::Checkbox("Auto queue",&autoResearch);
     ImGui::SetCursorPos({0,147});
     ImGui::BeginChild("##researchcanvas",{0,-39},ImGuiChildFlags_None,ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
     auto cp=ImGui::GetWindowPos();auto size=ImGui::GetWindowSize();auto* draw=ImGui::GetWindowDrawList();
@@ -119,7 +123,7 @@
     if(fit&&!shown.empty()){
       float minX=1e9f,minY=1e9f,maxX=0,maxY=0;for(int id:shown){auto p=position(id);minX=std::min(minX,p.x);minY=std::min(minY,p.y);maxX=std::max(maxX,p.x+cardW);maxY=std::max(maxY,p.y+cardH);}
       float fitWidth=size.x-68;if(researchSelected>=0)fitWidth=std::max(460.0f,fitWidth-370.0f);
-      researchZoom=std::clamp(std::min(fitWidth/(maxX-minX),(size.y-62)/(maxY-minY)),.25f,1.1f);
+      researchZoom=std::clamp(std::min(fitWidth/(maxX-minX),(size.y-62)/(maxY-minY)),.12f,1.1f);
       researchPan={32-minX*researchZoom,(size.y-(maxY-minY)*researchZoom)*.5f-minY*researchZoom};
       // Keep the active selection accessible even when a mature tree requires panning.
       if(centerCurrent&&researchSelected>=0){auto p=position(researchSelected);researchPan.x=std::min(32.0f,size.x-cardW*researchZoom-370)-p.x*researchZoom;researchPan.y=(size.y-cardH*researchZoom)*.45f-p.y*researchZoom;}
@@ -129,7 +133,7 @@
       auto& io=ImGui::GetIO();
       if(ImGui::IsMouseDragging(ImGuiMouseButton_Middle)||ImGui::IsMouseDragging(ImGuiMouseButton_Right)||(ImGui::IsMouseDragging(ImGuiMouseButton_Left)&&!ImGui::IsAnyItemActive())){researchPan.x+=io.MouseDelta.x;researchPan.y+=io.MouseDelta.y;}
       if(io.KeyCtrl&&io.MouseWheel!=0){
-        float old=researchZoom;researchZoom=std::clamp(researchZoom*std::pow(1.15f,io.MouseWheel),.25f,2.5f);float factor=researchZoom/old;
+        float old=researchZoom;researchZoom=std::clamp(researchZoom*std::pow(1.15f,io.MouseWheel),.12f,2.5f);float factor=researchZoom/old;
         researchPan.x=(io.MousePos.x-cp.x)-(io.MousePos.x-cp.x-researchPan.x)*factor;researchPan.y=(io.MousePos.y-cp.y)-(io.MousePos.y-cp.y-researchPan.y)*factor;
       }else{researchPan.y+=io.MouseWheel*65;researchPan.x+=io.MouseWheelH*65;if(io.KeyShift){researchPan.x+=io.MouseWheel*65;researchPan.y-=io.MouseWheel*65;}}
     }
@@ -139,13 +143,14 @@
     draw->PushClipRect(cp,{cp.x+size.x,cp.y+size.y},true);
     const float grid=38*z;for(float x=std::fmod(researchPan.x,grid);x<size.x;x+=grid)draw->AddLine({cp.x+x,cp.y},{cp.x+x,cp.y+size.y},IM_COL32(21,49,68,30));for(float y=std::fmod(researchPan.y,grid);y<size.y;y+=grid)draw->AddLine({cp.x,cp.y+y},{cp.x+size.x,cp.y+y},IM_COL32(21,49,68,30));
     for(int id:shown)for(int p:sim.techs[id].prerequisites){if(!displayed(p))continue;auto a=screenPos(p),b=screenPos(id);a={a.x+nw,a.y+nh*.5f};b={b.x,b.y+nh*.5f};float mid=(a.x+b.x)*.5f;ImU32 col=s.completed[p]?IM_COL32(67,193,234,220):IM_COL32(103,149,175,180);draw->AddBezierCubic(a,{mid,a.y},{mid,b.y},b,col,2.2f);draw->AddLine({b.x-8,b.y-5},b,col,2);draw->AddLine({b.x-8,b.y+5},b,col,2);}
-    auto text=[&](ImVec2 p,ImU32 color,const char* value,float wrap=0){draw->AddText(ImGui::GetFont(),std::max(15.0f,ImGui::GetFontSize()*z),p,color,value,nullptr,wrap);};
-    for(int id:shown){auto a=screenPos(id);ImVec2 b{a.x+nw,a.y+nh};if(b.x<cp.x||a.x>cp.x+size.x||b.y<cp.y||a.y>cp.y+size.y)continue;const auto& tech=sim.techs[id];int qi=queueIndex(id);bool done=s.completed[id];ImU32 edge=done?green:qi>=0?IM_COL32(244,190,98,255):cyan;
+    auto text=[&](ImVec2 p,ImU32 color,const char* value,float wrap=0){draw->AddText(ImGui::GetFont(),std::max(8.0f,ImGui::GetFontSize()*z),p,color,value,nullptr,wrap);};
+    for(int id:shown){auto a=screenPos(id);ImVec2 b{a.x+nw,a.y+nh};if(b.x<cp.x||a.x>cp.x+size.x||b.y<cp.y||a.y>cp.y+size.y)continue;const auto& tech=sim.techs[id];int qi=queueIndex(id);bool done=s.completed[id],available=sim.available(id);ImU32 edge=done?green:qi>=0?IM_COL32(244,190,98,255):available?cyan:IM_COL32(114,140,157,255);
       ImGui::SetCursorScreenPos(a);ImGui::PushID(id);bool activate=ImGui::InvisibleButton("technology",{nw,nh},ImGuiButtonFlags_EnableNav);bool over=ImGui::IsItemHovered()||ImGui::IsItemFocused();bool pressed=ImGui::IsItemActive();if(activate)researchSelected=id;
       draw->AddRectFilled(a,b,pressed?IM_COL32(26,74,100,255):over?IM_COL32(18,48,72,255):IM_COL32(7,28,40,228),1);draw->AddRectFilled({a.x+1,b.y-32*z},{b.x-1,b.y-1},done?IM_COL32(13,54,58,255):IM_COL32(14,44,66,255),4);draw->AddRect(a,b,edge,1,0,id==researchSelected?2.8f:1.2f);
       std::string iconName=tech.name;std::transform(iconName.begin(),iconName.end(),iconName.begin(),[](unsigned char c){return char(std::tolower(c));});
-      int kind=focus==8?14:focus==4?9:focus==1?10:focus==2?4:focus==5?5:focus==6?6:focus==7?7:focus==3?13:8;
-      if(iconName.find("foundation")!=std::string::npos&&focus==0)kind=0;
+      int iconField=int(tech.field);
+      int kind=iconField==8?14:iconField==4?9:iconField==1?10:iconField==2?4:iconField==5?5:iconField==6?6:iconField==7?7:iconField==3?13:8;
+      if(iconName.find("foundation")!=std::string::npos&&iconField==0)kind=0;
       if(iconName.find("mobility")!=std::string::npos||iconName.find("motorised")!=std::string::npos||iconName.find("transport")!=std::string::npos)kind=1;
       if(iconName.find("armour")!=std::string::npos||iconName.find("armoured")!=std::string::npos||iconName.find("mechanised")!=std::string::npos)kind=2;
       if(iconName.find("protection")!=std::string::npos||iconName.find("body armour")!=std::string::npos)kind=10;
@@ -153,22 +158,22 @@
       if(iconName.find("support weapons")!=std::string::npos||iconName.find("artillery")!=std::string::npos||iconName.find("guns")!=std::string::npos)kind=12;
       if(iconName.find("manpads")!=std::string::npos||iconName.find("guided missiles")!=std::string::npos||iconName.find("anti-tank")!=std::string::npos)kind=9;
       researchIcon(draw,{a.x+29*z,a.y+31*z},40*z,kind,pale);
-      if(titleFont)draw->AddText(titleFont,std::max(15.0f,ImGui::GetFontSize()*z),{a.x+55*z,a.y+13*z},pale,tech.name.c_str(),nullptr,nw-67*z);else text({a.x+55*z,a.y+13*z},pale,tech.name.c_str(),nw-67*z);
+      if(z>=.40f){if(titleFont)draw->AddText(titleFont,std::max(10.0f*uiScale,ImGui::GetFontSize()*z),{a.x+55*z,a.y+13*z},pale,tech.name.c_str(),nullptr,nw-67*z);else text({a.x+55*z,a.y+13*z},pale,tech.name.c_str(),nw-67*z);}
       std::string summary=tech.effect;if(summary.size()>48)summary=summary.substr(0,45)+"...";
 
-      const std::string status=done?"Complete":qi==0?"Researching":qi>0?"Queued #"+std::to_string(qi+1):"Available";
+      const std::string status=done?"Complete":qi==0?"Researching":qi>0?"Queued #"+std::to_string(qi+1):available?"Available":"Locked";
       if(done){draw->AddCircleFilled({a.x+17*z,b.y-16*z},8*z,green);draw->AddLine({a.x+13*z,b.y-16*z},{a.x+16*z,b.y-13*z},IM_COL32(8,38,43,255),2);draw->AddLine({a.x+16*z,b.y-13*z},{a.x+21*z,b.y-19*z},IM_COL32(8,38,43,255),2);}else researchIcon(draw,{a.x+17*z,b.y-16*z},15*z,6,edge);
-      text({a.x+33*z,b.y-26*z},edge,status.c_str());
+      if(z>=.40f)text({a.x+33*z,b.y-26*z},edge,status.c_str());
       if(qi==0){auto& job=s.research.front();float progress=std::clamp(float(job.progress/job.cost),0.0f,1.0f);draw->AddRectFilled({a.x+1,b.y-4},{a.x+(nw-2)*progress,b.y-1},edge);}
       if(ImGui::IsItemHovered()&&z<.75f){ImGui::BeginTooltip();ImGui::TextUnformatted(tech.name.c_str());ImGui::TextUnformatted(status.c_str());ImGui::PushTextWrapPos(320);ImGui::TextUnformatted(tech.effect.c_str());ImGui::PopTextWrapPos();ImGui::EndTooltip();}
       ImGui::PopID();
     }
-    if(shown.empty())draw->AddText({cp.x+30,cp.y+40},soft,"No revealed technology matches your search.");
+    if(shown.empty())draw->AddText({cp.x+30,cp.y+40},soft,"No technology matches your search.");
     draw->PopClipRect();ImGui::EndChild();
     ImGui::SetCursorPos({25,ImGui::GetWindowHeight()-29});ImGui::TextColored({.43f,.63f,.77f,1},"Wheel: scroll  /  Ctrl+wheel: zoom  /  Right drag: pan");
     ImGui::EndChild();ImGui::SameLine(0,0);
     ImGui::BeginChild("##nationalqueues",{queueWidth,0},ImGuiChildFlags_None);
-    ImGui::TextColored({.68f,.81f,.85f,1},"SCIENCE / PRODUCTION");ImGui::Separator();if(button("Exit research"))panel=None;ImGui::Spacing();
+    ImGui::TextColored({.68f,.81f,.85f,1},"SCIENCE / PRODUCTION");ImGui::Separator();ImGui::Spacing();
     ImGui::BeginChild("##queuelist",{0,-192*uiScale},ImGuiChildFlags_None);
     for(size_t q=0;q<s.research.size();++q){auto& job=s.research[q];if(!visible(job.tech))continue;ImGui::PushID(int(q)+7000);auto p=ImGui::GetCursorScreenPos();researchIcon(ImGui::GetWindowDrawList(),{p.x+22*uiScale,p.y+24*uiScale},34*uiScale,6,IM_COL32(86,198,217,255));ImGui::Dummy({46*uiScale,46*uiScale});ImGui::SameLine();ImGui::BeginGroup();ImGui::TextWrapped("%s",sim.techs[job.tech].name.c_str());auto eta=sim.researchETA(job.tech);ImGui::TextColored(muted,"%s",std::isfinite(eta)?durationText(eta).c_str():"Paused");ImGui::EndGroup();ImGui::ProgressBar(float(job.progress/std::max(.01,job.cost)),{-1,5*uiScale},"");if(ImGui::IsItemClicked())researchSelected=job.tech;ImGui::PopID();ImGui::Spacing();}
     if(s.research.empty())ImGui::TextColored(muted,"No research queued");ImGui::Separator();
@@ -176,16 +181,17 @@
     for(size_t q=0;q<s.units.size();++q){auto& unit=s.units[q];if(unit.owner!=s.player||unit.remaining<=0)continue;ImGui::TextWrapped("%s",unitNames[int(unit.type)]);ImGui::TextColored(muted,"%s",durationText(sim.unitETA(q)).c_str());ImGui::Separator();}
     ImGui::EndChild();ImGui::EndChild();
     ImGui::End();ImGui::PopStyleVar();ImGui::PopStyleColor();
-    // Compact, anchored details. No unrevealed prerequisite names can enter this panel.
+    // Locked nodes preview their capabilities and every prerequisite before research unlocks.
     if(visible(researchSelected)&&belongs(researchSelected)){
       const auto& tech=sim.techs[researchSelected];int qi=queueIndex(researchSelected);
-      float dw=std::min(352.0f*uiScale,w-rail-nav-queueWidth-32),dh=(s.completed[researchSelected]?180.0f:qi>=0?228.0f:276.0f)*uiScale;
+      float dw=std::min(352.0f*uiScale,w-rail-nav-queueWidth-32),dh=std::min(h-top-headerHeight-20*uiScale,(s.completed[researchSelected]?210.0f:qi>=0?258.0f:306.0f+24.0f*tech.prerequisites.size())*uiScale);
       ImGui::SetNextWindowPos({w-queueWidth-dw-18,h-dh-49});ImGui::SetNextWindowSize({dw,dh});
       ImGui::PushStyleColor(ImGuiCol_WindowBg,{.025f,.07f,.11f,.99f});ImGui::PushStyleColor(ImGuiCol_Border,{.21f,.51f,.69f,1});
       ImGui::Begin("##researchdetails",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings);
       if(titleFont)ImGui::PushFont(titleFont);ImGui::TextWrapped("%s",tech.name.c_str());if(titleFont)ImGui::PopFont();ImGui::Spacing();wrapped(tech.effect);
       if(tech.sourceLevel>0){ImGui::TextColored(muted,"Technology level: %.1f / current %.2f",tech.sourceLevel,sim.researchLevel());ImGui::Text("Research points: %.0f",tech.sourcePoints);}else ImGui::TextColored(muted,"Reference era: %d",tech.year);
-      for(int p:tech.prerequisites)if(visible(p))ImGui::TextWrapped("Requires: %s",sim.techs[p].name.c_str());
+      for(int p:tech.prerequisites)if(visible(p)){ImGui::TextColored(s.completed[p]?accent:muted,"%s",s.completed[p]?"Prerequisite complete:":"Required to unlock:");ImGui::TextWrapped("%s",sim.techs[p].name.c_str());}
+      if(!s.completed[researchSelected]&&qi<0&&!sim.available(researchSelected))ImGui::TextWrapped("Locked: complete the required technologies above to begin research.");
       if(s.completed[researchSelected])ImGui::TextColored(accent,"Capability complete");
       else if(qi>=0){auto eta=sim.researchETA(researchSelected);ImGui::TextWrapped("%s: %s",qi==0?"Remaining":"Ready in",std::isfinite(eta)?durationText(eta).c_str():"Paused");if(button("Remove from queue")){sim.removeResearch(size_t(qi));notice("Research removed: "+tech.name);}}
       else{ImGui::Text("Early research: %.1fx duration",sim.researchCost(researchSelected)/tech.cost);auto eta=sim.researchETA(researchSelected);ImGui::Text("Duration: %s",std::isfinite(eta)?durationText(eta).c_str():"Paused");ImGui::Spacing();ImGui::PushStyleColor(ImGuiCol_Button,{.02f,.43f,.72f,1});if(button("Queue research",sim.available(researchSelected))){if(sim.queueResearch(researchSelected))notice("Research queued: "+tech.name);}ImGui::PopStyleColor();}

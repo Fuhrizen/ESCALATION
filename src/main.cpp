@@ -248,7 +248,7 @@ struct App {
   }
   void start(){
     if(selectedNation<0)return;
-    sim.start(selectedNation,Field(focus));
+    sim.start(selectedNation,focus>=0&&focus<=8?Field(focus):Field::Army);
     renderer.campaign(world,sim.state);
     screen=Game;
     panel=None;
@@ -263,7 +263,7 @@ struct App {
     audio.play(SoundCue::Click);
     cancelGestures();construction=readyUnitPlacement=-1;commandMode=false;attackMode=0;measuring=false;measurePoints=0;
     panel=panel==wanted?None:wanted;
-    if(panel==Research)treeFocus=true;
+    if(panel==Research&&researchLayout.count<0)treeFocus=true;
   }
   void selectPoint(Point geo){
     if(screen==Select){
@@ -585,10 +585,10 @@ struct App {
 #include "ui_map.inl"
   void game(float w,float h){
     hud(w,h);
-    sidePanel(w,h);
-    if(panel==Research)researchTree(w,h);
-    inspector(w,h);
-    navigation(h);
+    if(panel==Build)productionPage(w,h);
+    else if(panel==Research)researchTree(w,h);
+    else sidePanel(w,h);
+    if(panel!=Build&&panel!=Research){inspector(w,h);navigation(h);}
     if(sim.state.victory||sim.state.defeat){
       ImGui::SetNextWindowPos({
         w/2-180,70
@@ -632,7 +632,7 @@ struct App {
       const std::array<int,5> selectionBefore={selectedUnit,selectedSite,selectedRegion,selectedSettlement,selectedWorldCity};
       controls(dt);
       if(selectionBefore!=std::array<int,5>{selectedUnit,selectedSite,selectedRegion,selectedSettlement,selectedWorldCity})audio.play(SoundCue::Select);
-      mapLabels();
+      if(screen!=Game||panel==None)mapLabels();
       if(screen==Select)selection(w,h);
       else game(w,h);
     }

@@ -1,6 +1,22 @@
 // Included inside App; approved compact command header and permanent ready rail.
   float hudHeight() const{return 44.f*uiScale;}
   float commandHeight() const{return 0.f;}
+  void managementPageHeader(float w){
+    const float s=uiScale;
+    ImGui::BeginChild("National workspace navigation",{0,56*s},ImGuiChildFlags_None,ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::SetCursorPos({12*s,12*s});
+    auto page=[&](const char* name,Panel target){
+      if(panel==target)ImGui::PushStyleColor(ImGuiCol_Button,{.04f,.30f,.40f,1});
+      bool chosen=ImGui::Button(name,{154*s,32*s});
+      if(panel==target)ImGui::PopStyleColor();
+      if(chosen&&panel!=target)toggle(target);
+    };
+    page("Research [R]",Research);ImGui::SameLine();page("Construction [B]",Build);
+    ImGui::SetCursorPos({std::max(338*s,w-282*s),12*s});
+    if(ImGui::Button(paused?"Resume [Space]":"Pause [Space]",{124*s,32*s})){paused=!paused;audio.play(SoundCue::Click);}
+    ImGui::SameLine();if(ImGui::Button("Exit to map",{134*s,32*s}))toggle(panel);
+    ImGui::EndChild();
+  }
   float pageSafeLeft() const{return readyRailWidth();}
   float managementWidth() const{return pageSafeLeft();}
   float inspectorWidth(float w) const{return std::min(360.f*uiScale,w-224.f*uiScale);}
@@ -104,7 +120,7 @@
       if(space>140*s){double level=sim.researchLevel();ImGui::SetCursorScreenPos({start,5*s});ImGui::Text("TECH LEVEL %.2f",level);ImGui::SetCursorScreenPos({start,29*s});ImGui::ProgressBar(float(level>=10?1:level-std::floor(level)),{std::min(210*s,space),5*s},"");}
       ImGui::SetCursorPos({w-aw-14*s,4*s});allocationBar(aw,true);
     }else{ImGui::SameLine();ImGui::TextUnformatted("ESCALATION / Select a nation");}
-    ImGui::End();ImGui::PopStyleVar(2);if(screen==Game&&panel==None&&noticeRemaining>0){auto*d=ImGui::GetForegroundDrawList();ImVec2 p{readyRailWidth(h)+12*s,hudHeight()+8*s};float wrap=std::min(550*s,w-p.x-16*s);d->AddText(ImGui::GetFont(),ImGui::GetFontSize(),{p.x+1,p.y+1},IM_COL32(0,0,0,240),message.c_str(),nullptr,wrap);d->AddText(ImGui::GetFont(),ImGui::GetFontSize(),p,IM_COL32(229,238,233,255),message.c_str(),nullptr,wrap);}if(screen==Game){readyRail(h);auto*d=ImGui::GetBackgroundDrawList();d->AddRectFilledMultiColor({0,h-24*s},{w,h},IM_COL32(5,94,121,0),IM_COL32(5,94,121,0),IM_COL32(5,94,121,150),IM_COL32(5,94,121,150));auto date=campaignDate();auto size=ImGui::CalcTextSize(date.c_str());d->AddText({(w-size.x)*.5f,h-22*s},IM_COL32(183,224,238,255),date.c_str());}
+    ImGui::End();ImGui::PopStyleVar(2);if(screen==Game&&panel==None&&noticeRemaining>0){auto*d=ImGui::GetForegroundDrawList();ImVec2 p{readyRailWidth(h)+12*s,hudHeight()+8*s};float wrap=std::min(550*s,w-p.x-16*s);d->AddText(ImGui::GetFont(),ImGui::GetFontSize(),{p.x+1,p.y+1},IM_COL32(0,0,0,240),message.c_str(),nullptr,wrap);d->AddText(ImGui::GetFont(),ImGui::GetFontSize(),p,IM_COL32(229,238,233,255),message.c_str(),nullptr,wrap);}if(screen==Game){if(panel!=Research&&panel!=Build)readyRail(h);auto*d=ImGui::GetBackgroundDrawList();d->AddRectFilledMultiColor({0,h-24*s},{w,h},IM_COL32(5,94,121,0),IM_COL32(5,94,121,0),IM_COL32(5,94,121,150),IM_COL32(5,94,121,150));auto date=campaignDate();auto size=ImGui::CalcTextSize(date.c_str());d->AddText({(w-size.x)*.5f,h-22*s},IM_COL32(183,224,238,255),date.c_str());}
   }
   void pauseMenu(float w,float h){
     if(!pauseOpen){if(ImGui::BeginPopupModal("Command options")){ImGui::CloseCurrentPopup();ImGui::EndPopup();}return;}
