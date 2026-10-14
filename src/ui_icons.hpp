@@ -9,12 +9,12 @@ inline void icon(ImDrawList* d,ImVec2 c,float size,int kind,ImU32 color){
  auto circle=[&](float x,float y,float r){d->AddCircle({c.x+x*s,c.y+y*s},r*s,color,16,1.7f);};
  // Numeric IDs are stable for saved games; aircraft remain retired.
  if((kind>=3&&kind<=4)||kind==31)return;
- // 0..8 units, 20+facility enum indices.
+ // 0..10 units, 20+facility enum indices.
  if(kind==0){l(-.65,-.45,.65,.45);l(.65,-.45,-.65,.45);}
  else if(kind==1){d->AddEllipse(c,{.72f*s,.38f*s},color,0,24,1.7f);}
  else if(kind==2){d->AddCircleFilled(c,.2f*s,color,16);}
- else if(kind==5){l(-.85,.1,-.6,.55);l(-.6,.55,.6,.55);l(.6,.55,.85,.1);l(-.85,.1,.85,.1);l(-.35,.1,-.35,-.4);l(-.35,-.4,.4,-.4);l(.4,-.4,.4,.1);l(0,-.4,0,-.85);l(-.65,.8,-.2,.8);l(.15,.8,.65,.8);}
- else if(kind==6){d->AddEllipse(c,{.85f*s,.27f*s},color,0,24,1.7f);l(-.1,-.2,-.1,-.55);l(-.1,-.55,.3,-.55);l(.3,-.55,.3,-.2);l(.1,-.55,.1,-.8);}
+ else if(kind==5||kind==9){l(-.85,.1,-.6,.55);l(-.6,.55,.6,.55);l(.6,.55,.85,.1);l(-.85,.1,.85,.1);l(-.35,.1,-.35,-.4);l(-.35,-.4,.4,-.4);l(.4,-.4,.4,.1);l(0,-.4,0,-.85);l(-.65,.8,-.2,.8);l(.15,.8,.65,.8);if(kind==9){l(-.65,-.15,-.65,-.7);l(.65,-.15,.65,-.7);l(-.75,-.5,-.65,-.7);l(.55,-.5,.65,-.7);}}
+ else if(kind==6||kind==10){d->AddEllipse(c,{.85f*s,.27f*s},color,0,24,1.7f);l(-.1,-.2,-.1,-.55);l(-.1,-.55,.3,-.55);l(.3,-.55,.3,-.2);l(.1,-.55,.1,-.8);if(kind==10){l(-.6,-.2,-.6,-.65);l(.6,-.2,.6,-.65);}}
  else if(kind==28){l(-.8,.7,.8,.7);l(-.6,.35,.65,.35);l(-.6,.35,-.85,-.1);l(-.85,-.1,.85,-.1);l(.85,-.1,.65,.35);l(0,-.1,0,-.8);l(0,-.8,.7,-.8);l(.7,-.8,.7,-.3);l(-.5,-.1,-.5,-.55);}
  else if(kind==7){l(-.6,-.4,.6,.4);l(.6,-.4,-.6,.4);l(0,-.7,0,.7);}
  else if(kind==8||kind==29){l(-.25,.45,-.25,-.35);l(-.25,-.35,0,-.8);l(0,-.8,.25,-.35);l(.25,-.35,.25,.45);l(-.25,.45,.25,.45);l(-.25,.1,-.55,.65);l(.25,.1,.55,.65);l(-.15,.6,0,.85);l(.15,.6,0,.85);}
@@ -49,7 +49,12 @@ inline void badge(ImDrawList* d,ImVec2 c,float size,int kind,ImU32 color,bool se
    float x=size*.82f,y=size*.56f;
    if(selected&&!hostile)d->AddRect({c.x-x-3,c.y-y-3},{c.x+x+3,c.y+y+3},IM_COL32(102,183,255,170),2,0,1.0f);
    if(hostile){ImVec2 shape[]={{c.x,c.y-y-3},{c.x+x+3,c.y},{c.x,c.y+y+3},{c.x-x-3,c.y}};d->AddConvexPolyFilled(shape,4,color);d->AddPolyline(shape,4,selected?edge:IM_COL32(15,32,51,255),ImDrawFlags_Closed,selected?2.0f:1.4f);icon(d,c,size*.65f,kind,IM_COL32(14,32,52,255));}
-   else {d->AddRectFilled({c.x-x,c.y-y},{c.x+x,c.y+y},color,1);d->AddRect({c.x-x,c.y-y},{c.x+x,c.y+y},selected?edge:IM_COL32(15,32,51,255),1,0,selected?2.0f:1.4f);icon(d,c,size*.85f,kind,IM_COL32(10,29,49,255));}
+   else {d->AddRectFilled({c.x-x,c.y-y},{c.x+x,c.y+y},color,1);d->AddRect({c.x-x,c.y-y},{c.x+x,c.y+y},selected?edge:IM_COL32(15,32,51,255),1,0,selected?2.0f:1.4f);if(kind==0){
+     // NATO infantry diagonals join the frame corners, rather than a small X.
+     float inset=1.3f;ImU32 symbol=IM_COL32(10,29,49,255);
+     d->AddLine({c.x-x+inset,c.y-y+inset},{c.x+x-inset,c.y+y-inset},symbol,1.7f);
+     d->AddLine({c.x+x-inset,c.y-y+inset},{c.x-x+inset,c.y+y-inset},symbol,1.7f);
+   }else icon(d,c,size*.85f,kind,IM_COL32(10,29,49,255));}
  } else {
    float r=size*.7f;
    d->AddRectFilled({c.x-r,c.y-r},{c.x+r,c.y+r},IM_COL32(10,20,30,242),3);

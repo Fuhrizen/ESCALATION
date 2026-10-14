@@ -35,12 +35,12 @@ namespace escalation {
   }
   static const char* vertexSource=R"(#version 330 core
 layout(location=0) in vec2 position;layout(location=1) in float country;
-uniform vec2 center;uniform float zoom,aspect,offset,layer;uniform int globe;
+uniform vec2 center;uniform float zoom,aspect,offset,layer;uniform int globe,sky;
 out float depth;out vec2 geo;flat out int id;
-void main(){geo=position;id=int(country);vec2 p=position+vec2(offset,0);if(globe==1){float lat=radians(p.y),lon=radians(p.x-center.x),tilt=radians(center.y);vec3 v=vec3(cos(lat)*sin(lon),sin(lat),cos(lat)*cos(lon));vec2 yz=mat2(cos(tilt),sin(tilt),-sin(tilt),cos(tilt))*v.yz;depth=yz.y;gl_Position=vec4(v.x/aspect*zoom,yz.x*zoom,-yz.y*layer*0.45,1);}else{depth=1;gl_Position=vec4((p.x-center.x)/180*zoom,(p.y-center.y)/180*aspect*zoom,0,1);}})";
+void main(){geo=position;id=int(country);if(sky==1){depth=1;gl_Position=vec4(position,0,1);return;}vec2 p=position+vec2(offset,0);if(globe==1){float lat=radians(p.y),lon=radians(p.x-center.x),tilt=radians(center.y);vec3 v=vec3(cos(lat)*sin(lon),sin(lat),cos(lat)*cos(lon));vec2 yz=mat2(cos(tilt),sin(tilt),-sin(tilt),cos(tilt))*v.yz;depth=yz.y;gl_Position=vec4(v.x/aspect*zoom,yz.x*zoom,-yz.y*layer*0.45,1);}else{depth=1;gl_Position=vec4((p.x-center.x)/180*zoom,(p.y-center.y)/180*aspect*zoom,0,1);}})";
   static const char* fragmentSource=R"(#version 330 core
 in float depth;in vec2 geo;flat in int id;
-uniform sampler2D palette,heightmap;uniform int globe,border,relief;out vec4 color;
+uniform sampler2D palette,heightmap;uniform int globe,border,relief,sky;uniform vec2 viewport,center;uniform float zoom;out vec4 color;
 float hash3(vec3 p){p=fract(p*0.1031);p+=dot(p,p.yzx+33.33);return fract((p.x+p.y)*p.z);}
 float grain(vec3 p){
  vec3 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
@@ -57,6 +57,24 @@ float octave(vec3 p,float scale,float footprint){
 }
 float dryZone(vec2 p,vec2 c,vec2 size){vec2 d=vec2(mod(p.x-c.x+180.0,360.0)-180.0,p.y-c.y)/size;return exp(-dot(d,d)*1.8);}
 void main(){
+ if(sky==1){
+  // A fixed celestial field rotates with longitude rather than crawling with
+  // frame time. Pixel-filtered stars stay sparse and stable at any resolution.
+  vec2 uv=geo*0.5+0.5;
+  vec2 starSpace=uv*vec2(viewport.x/5.0,viewport.y/5.0)+center*vec2(0.15,0.08);
+  vec2 cell=floor(starSpace),local=fract(starSpace)-0.5;
+  float seed=hash3(vec3(cell,27.0));
+  float star=(1.0-smoothstep(0.05,0.18,length(local)))*step(0.985,seed);
+  float haze=grain(vec3(uv*vec2(3.0,5.0),4.0));
+  float band=exp(-pow((uv.y-0.20-uv.x*0.40)*7.0,2.0));
+  vec3 space=mix(vec3(0.005,0.009,0.023),vec3(0.026,0.040,0.070),band*haze);
+  vec2 sphere=geo*vec2(viewport.x/viewport.y,1.0);
+  // Soft atmospheric rim surrounds the same orthographic globe as the map.
+  float radius=length(sphere);
+  float halo=exp(-abs(radius-zoom)*70.0/max(zoom,0.1));
+  space+=vec3(0.025,0.105,0.175)*halo;
+  color=vec4(space+vec3(0.52,0.62,0.78)*star,1.0);return;
+ }
  if(globe==1&&depth<0)discard;
  vec4 base=texelFetch(palette,ivec2(id%16,id/16),0);
  if(relief==1&&border==0&&id!=254){
@@ -129,7 +147,15 @@ void main(){
  }
  if(border==0&&id<254)base.a=1.0;
  if(border==1)base=vec4(base.rgb*1.35,0.48);
- float light=globe==1?0.76+0.24*sqrt(max(depth,0)):1.0;color=vec4(base.rgb*light,base.a);
+ float light=globe==1?0.76+0.24*sqrt(max(depth,0)):1.0;
+ vec3 shaded=base.rgb*light;
+ if(globe==1&&border==0){
+  // Atmospheric scattering follows the true sphere limb, so it remains
+  // attached to coastlines as the globe rotates and the camera zooms.
+  float limb=pow(1.0-clamp(depth,0.0,1.0),6.0);
+  shaded=mix(shaded,vec3(0.12,0.34,0.48),limb*0.32);
+ }
+ color=vec4(shaded,base.a);
 })";
   static gl::UInt shader(gl::Enum type,const char* source){
     auto s=gl::CreateShader(type);
@@ -181,11 +207,15 @@ void main(){
     }
     gl::DeleteShader(vs);
     gl::DeleteShader(fs);
+    auto uniform=[&](const char* name){return gl::GetUniformLocation(program_,name);};
+    uniforms_={uniform("layer"),uniform("border"),uniform("offset"),uniform("heightmap"),uniform("relief"),uniform("palette"),uniform("center"),uniform("zoom"),uniform("aspect"),uniform("globe"),uniform("sky"),uniform("viewport")};
+    sky_=upload({{-1,-1,253},{1,-1,253},{1,1,253},{-1,-1,253},{1,1,253},{-1,1,253}});
     gl::GenTextures(1,&palette_);
     gl::BindTexture(gl::TEXTURE_2D,palette_);
     gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_MIN_FILTER,gl::NEAREST);
     gl::TexParameteri(gl::TEXTURE_2D,gl::TEXTURE_MAG_FILTER,gl::NEAREST);
     gl::TexImage2D(gl::TEXTURE_2D,0,gl::RGBA32F,16,16,0,gl::RGBA,gl::FLOAT,nullptr);
+    paletteReady_=false;
     std::vector<Vertex> land,borders,ocean,grid;
     auto emit=[&](std::vector<Vertex>& v,Point p,int id){
       v.push_back({float(p.x),float(p.y),float(id)});
@@ -270,11 +300,11 @@ void main(){
   }
   void Renderer::draw(const Mesh& mesh,gl::Enum primitive,const Camera& c,float layer,bool borders){
     if(!mesh.count)return;
-    gl::Uniform1f(gl::GetUniformLocation(program_,"layer"),layer);
-    gl::Uniform1i(gl::GetUniformLocation(program_,"border"),borders);
+    gl::Uniform1f(uniforms_.layer,layer);
+    gl::Uniform1i(uniforms_.border,borders);
     gl::BindVertexArray(mesh.vao);
     for(int offset=c.globe?0:-1;offset<=(c.globe?0:1);++offset){
-      gl::Uniform1f(gl::GetUniformLocation(program_,"offset"),float(offset*360));
+      gl::Uniform1f(uniforms_.offset,float(offset*360));
       gl::DrawArrays(primitive,0,mesh.count);
     }
   }
@@ -303,17 +333,26 @@ void main(){
     colors[255]={0.035f,0.09f,0.13f,1};
     gl::ActiveTexture(gl::TEXTURE0);
     gl::BindTexture(gl::TEXTURE_2D,palette_);
-    gl::TexSubImage2D(gl::TEXTURE_2D,0,0,0,16,16,gl::RGBA,gl::FLOAT,colors.data());
+    if(!paletteReady_||colors!=paletteColors_){
+      gl::TexSubImage2D(gl::TEXTURE_2D,0,0,0,16,16,gl::RGBA,gl::FLOAT,colors.data());
+      paletteColors_=colors;paletteReady_=true;
+    }
     gl::UseProgram(program_);
-    gl::ActiveTexture(gl::TEXTURE1);gl::BindTexture(gl::TEXTURE_2D,assets.terrain);gl::Uniform1i(gl::GetUniformLocation(program_,"heightmap"),1);gl::Uniform1i(gl::GetUniformLocation(program_,"relief"),c.terrain);gl::ActiveTexture(gl::TEXTURE0);
-    gl::Uniform1i(gl::GetUniformLocation(program_,"palette"),0);
-    gl::Uniform2f(gl::GetUniformLocation(program_,"center"),float(c.longitude),float(c.latitude));
-    gl::Uniform1f(gl::GetUniformLocation(program_,"zoom"),float(c.zoom));
-    gl::Uniform1f(gl::GetUniformLocation(program_,"aspect"),c.width/c.height);
-    gl::Uniform1i(gl::GetUniformLocation(program_,"globe"),c.globe);
+    gl::ActiveTexture(gl::TEXTURE1);gl::BindTexture(gl::TEXTURE_2D,assets.terrain);gl::Uniform1i(uniforms_.heightmap,1);gl::Uniform1i(uniforms_.relief,c.terrain);gl::ActiveTexture(gl::TEXTURE0);
+    gl::Uniform1i(uniforms_.palette,0);
+    gl::Uniform2f(uniforms_.center,float(c.longitude),float(c.latitude));
+    gl::Uniform1f(uniforms_.zoom,float(c.zoom));
+    gl::Uniform1f(uniforms_.aspect,c.width/c.height);
+    gl::Uniform1i(uniforms_.globe,c.globe);
     gl::Enable(gl::BLEND);
     gl::BlendFunc(gl::SRC_ALPHA,gl::ONE_MINUS_SRC_ALPHA);
+    gl::Uniform1i(uniforms_.sky,0);
     if(c.globe){
+      gl::Disable(gl::DEPTH_TEST);
+      gl::Uniform2f(uniforms_.viewport,c.width,c.height);
+      gl::Uniform1i(uniforms_.sky,1);
+      gl::BindVertexArray(sky_.vao);gl::DrawArrays(gl::TRIANGLES,0,sky_.count);
+      gl::Uniform1i(uniforms_.sky,0);
       gl::Enable(gl::DEPTH_TEST);
       gl::DepthFunc(gl::LEQUAL);
     }
@@ -333,8 +372,9 @@ void main(){
   }
   void Renderer::shutdown(){
     assets.shutdown();
-    for(auto* m:{&land_,&borders_,&ocean_,&grid_,&regions_,&regionBorders_})destroy(*m);
+    for(auto* m:{&land_,&borders_,&ocean_,&grid_,&regions_,&regionBorders_,&sky_})destroy(*m);
     if(palette_)gl::DeleteTextures(1,&palette_);
     if(program_)gl::DeleteProgram(program_);
+    palette_=program_=0;paletteReady_=false;
   }
 }

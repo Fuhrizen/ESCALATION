@@ -91,7 +91,10 @@ namespace escalation {
       int count=0;
     };
     gl::UInt program_=0,palette_=0;
-    Mesh land_,borders_,ocean_,grid_,regions_,regionBorders_;
+    Mesh land_,borders_,ocean_,grid_,regions_,regionBorders_,sky_;
+    std::array<std::array<float,4>,256> paletteColors_{};
+    bool paletteReady_=false;
+    struct Uniforms { int layer,border,offset,heightmap,relief,palette,center,zoom,aspect,globe,sky,viewport; } uniforms_{};
     Mesh upload(const std::vector<Vertex>& vertices);
     void destroy(Mesh& mesh);
     void draw(const Mesh& mesh,gl::Enum primitive,const Camera& c,float layer,bool borders=false);
