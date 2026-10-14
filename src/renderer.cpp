@@ -48,6 +48,13 @@ float grain(vec3 p){
 }
 // Fixed Earth-space texture: longitude seam and polar convergence have no noise seam.
 vec3 earthPoint(vec2 p){float a=radians(p.x),b=radians(p.y);return vec3(cos(b)*cos(a),sin(b),cos(b)*sin(a));}
+// Fade each octave before it reaches one pixel. Stable geography-anchored detail
+// replaces screen-space grain and avoids flicker when zooming or dragging.
+float octave(vec3 p,float scale,float footprint){
+ float fade=1.0-smoothstep(0.28,0.85,scale*footprint);
+ if(fade<0.001)return 0.5;
+ return mix(0.5,grain(p*scale),fade);
+}
 float dryZone(vec2 p,vec2 c,vec2 size){vec2 d=vec2(mod(p.x-c.x+180.0,360.0)-180.0,p.y-c.y)/size;return exp(-dot(d,d)*1.8);}
 void main(){
  if(globe==1&&depth<0)discard;
@@ -58,7 +65,11 @@ void main(){
   vec3 earth=earthPoint(geo);
   float broad=grain(earth*48.0),footprint=max(length(dFdx(earth)),length(dFdy(earth)));
   float detailFade=1.0-smoothstep(0.002,0.014,footprint);
-  float fine=(grain(earth*420.0)-0.5)*detailFade;
+  float meso=octave(earth,220.0,footprint);
+  float fine=octave(earth,820.0,footprint)-0.5;
+  float canopy=octave(earth,2700.0,footprint);
+  float micro=octave(earth,8100.0,footprint)-0.5;
+  float closeGrain=octave(earth,24300.0,footprint)-0.5;
   if(id==255){
    // Coast distance illustrates a continental shelf; this is not bathymetric data.
    float shelf=1.0-smoothstep(0.0,0.7,surface.g);
@@ -73,18 +84,45 @@ void main(){
    float arid=max(max(dryZone(geo,vec2(20,24),vec2(38,15)),dryZone(geo,vec2(46,26),vec2(19,12))),max(dryZone(geo,vec2(134,-25),vec2(22,14)),dryZone(geo,vec2(70,42),vec2(30,12))));
    arid=max(arid,max(dryZone(geo,vec2(-112,34),vec2(16,13))*0.68,dryZone(geo,vec2(20,-24),vec2(15,12))*0.8));
    arid=clamp(arid+(broad-0.5)*0.20,0.0,1.0);
-   vec3 grass=mix(vec3(0.225,0.285,0.192),vec3(0.330,0.365,0.237),broad);
-   vec3 terrain=mix(grass,vec3(0.490,0.425,0.290),arid);
-   float rock=smoothstep(0.16,0.47,h);
-   terrain=mix(terrain,mix(vec3(0.380,0.370,0.300),vec3(0.490,0.485,0.440),broad),rock);
+   // Original illustrative land-cover shading; the source atlas supplies real
+   // relative elevation, while these geographic-space textures supply surface detail.
+   float hWest=texture(heightmap,uv-vec2(pixel.x,0)).r;
+   float hEast=texture(heightmap,uv+vec2(pixel.x,0)).r;
+   float hNorth=texture(heightmap,uv-vec2(0,pixel.y)).r;
+   float hSouth=texture(heightmap,uv+vec2(0,pixel.y)).r;
+   float dx=hEast-hWest,dy=hSouth-hNorth;
+   float slope=length(vec2(dx,dy));
+   float rock=smoothstep(0.15,0.48,h);
+   float mountain=max(rock,smoothstep(0.015,0.090,slope));
+   float woodland=(1.0-arid)*(1.0-smoothstep(0.28,0.58,h));
+   woodland*=smoothstep(0.30,0.72,meso+broad*0.14);
+   vec3 meadow=mix(vec3(0.265,0.310,0.175),vec3(0.400,0.390,0.240),meso);
+   vec3 forest=mix(vec3(0.105,0.180,0.115),vec3(0.220,0.270,0.150),canopy);
+   vec3 terrain=mix(meadow,forest,woodland*0.78);
+   terrain=mix(terrain,mix(vec3(0.490,0.390,0.230),vec3(0.650,0.565,0.360),meso),arid);
+   vec3 stone=mix(vec3(0.260,0.280,0.210),vec3(0.525,0.475,0.340),meso);
+   terrain=mix(terrain,stone,rock*0.80);
+   // Sharper ridge/valley microrelief is artistic detail, aligned to the large
+   // scale elevation slope. It supplements rather than moves actual mountains.
+   vec3 stretch=earth*vec3(1.0,1.65,0.82)+vec3(meso*0.002);
+   float ridgeA=1.0-abs(octave(stretch,1500.0,footprint*1.65)*2.0-1.0);
+   float ridgeB=1.0-abs(canopy*2.0-1.0);
+   float ridge=(ridgeA-0.63)*0.25+(ridgeB-0.63)*0.12+micro*0.10;
    float snow=max(smoothstep(0.56,0.79,h),smoothstep(64.0,79.0,abs(geo.y)));
-   terrain=mix(terrain,vec3(0.730,0.760,0.720),snow);
-   float dx=texture(heightmap,uv+vec2(pixel.x,0)).r-texture(heightmap,uv-vec2(pixel.x,0)).r;
-   float dy=texture(heightmap,uv+vec2(0,pixel.y)).r-texture(heightmap,uv-vec2(0,pixel.y)).r;
-   vec3 normal=normalize(vec3(-dx*16.0,dy*16.0,1.0));
-   float shade=0.63+0.48*max(0.0,dot(normal,normalize(vec3(-0.65,0.72,0.85))));
-   terrain*=shade;
-   terrain+=fine*mix(0.020,0.036,rock)*(1.0-snow*0.6);
+   terrain=mix(terrain,vec3(0.800,0.805,0.750),snow);
+   vec3 normal=normalize(vec3(-dx*24.0,dy*24.0,1.0));
+   float shade=0.57+0.57*max(0.0,dot(normal,normalize(vec3(-0.65,0.72,0.85))));
+   terrain*=shade+ridge*mountain*(1.0-snow*0.65);
+   // Agricultural mosaics on flatter, temperate ground. Cell edges are
+   // filtered at distance, and do not imply mapped farmland boundaries.
+   float farm=(1.0-woodland)*(1.0-arid)*(1.0-mountain)*(1.0-snow);
+   vec3 cells=earth*1700.0;
+   vec3 edge=min(fract(cells),1.0-fract(cells));
+   float fieldEdge=1.0-smoothstep(0.025,0.070,min(edge.x,min(edge.y,edge.z)));
+   float cellFade=1.0-smoothstep(0.15,0.70,footprint*1700.0);
+   float fieldShade=hash3(floor(cells))-0.5;
+   terrain+=(fieldShade*0.038-fieldEdge*0.024)*farm*cellFade;
+   terrain+=fine*0.036+micro*mix(0.032,0.055,woodland)+closeGrain*0.024;
    // Palette alpha is ownership tint strength; geographic fills remain opaque.
    base=vec4(mix(terrain,base.rgb,base.a),1.0);
   }

@@ -37,7 +37,8 @@
       "channels": "R: unchanged relative elevation; G: ocean distance to bundled country coastlines, capped at 24 pixels; B: country land mask; A: opaque",
       "coastSource": "Bundled Natural Earth v5.1.2 world.geojson; public domain",
       "generator": "tools/prepare_surface.py",
-      "limitations": "Coastal distance is illustrative shelf colour, not bathymetry. Biome colours are latitude/elevation-based artistic styling, not land-cover data."
+      "limitations": "Coastal distance is illustrative shelf colour, not bathymetry. Biome colours are latitude/elevation-based artistic styling, not land-cover data.",
+      "rendering": "Original geographic-space procedural meadow, forest canopy, agricultural mosaic and rocky ridge shading; multi-octave derivative filtering maintains stable detail from tactical zoom to globe. No satellite imagery or asset-library textures imported."
     }
   },
   "bundledSha256": {
