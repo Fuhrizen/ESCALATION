@@ -2,7 +2,7 @@
   void allocation(){ImGui::TextColored(muted,"National allocation is set in the top header.");}
   bool productiveSite(const Site& site) const{return site.type==Facility::ArmyBase||site.type==Facility::Factory||site.type==Facility::Silo||site.type==Facility::Shipyard;}
   void production(int site){
-    for(int type=0;type<9;++type){if(!activeUnit(UnitType(type)))continue;ImGui::PushID(type);auto reason=sim.unitReason(UnitType(type),site);if(button(unitNames[type],reason.empty())){sim.queueUnit(UnitType(type),site);notice("Unit production queued");}tooltip(reason.empty()?"Production time: "+durationText(sim.unitBuildETA(UnitType(type),site)):reason);ImGui::PopID();}
+    for(int type=0;type<int(UnitType::Count);++type){if(!activeUnit(UnitType(type)))continue;ImGui::PushID(type);auto reason=sim.unitReason(UnitType(type),site);if(button(unitNames[type],reason.empty())){sim.queueUnit(UnitType(type),site);notice("Unit production queued");}tooltip(reason.empty()?"Production time: "+durationText(sim.unitBuildETA(UnitType(type),site)):reason);ImGui::PopID();}
   }
   void buildPanel(){
     heading("PRODUCTION");allocation();ImGui::TextColored(muted,"Queue units and installations. Completed items appear in the ready rail.");

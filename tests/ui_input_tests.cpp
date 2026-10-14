@@ -67,6 +67,19 @@ int main(){
     io.AddKeyEvent(ImGuiKey_Escape,true);frame();
     check(app.attackMode==0,"Escape cancels point-attack targeting");io.AddKeyEvent(ImGuiKey_Escape,false);frame();
     app.panel=App::Build;check(app.mapOverlayHit({600,300},1280,720),"Full navigation pages intercept map input");
+    app.panel=App::None;app.measuring=true;app.measurePoints=0;app.selectedUnit=-1;app.selectedUnits.clear();
+    app.selectPoint({0,0});check(app.measurePoints==1,"First measurement click captures the origin");
+    app.selectPoint({1,0});check(app.measurePoints==2&&std::abs(distanceKm(app.measureStart,app.measureEnd)-111.195)<.1,"Second measurement click returns geographic kilometres");
+    app.selectPoint({179,0});app.selectPoint({-179,0});check(distanceKm(app.measureStart,app.measureEnd)<225,"Measurement uses the short route across the date line");
+    io.AddKeyEvent(ImGuiKey_Escape,true);frame();check(!app.measuring&&app.measurePoints==0&&!app.pauseOpen,"Escape closes measurement before opening pause");io.AddKeyEvent(ImGuiKey_Escape,false);frame();
+    check(App::populationText(1234567)=="1,234,567","City population is readable without losing precision");
+    app.panel=App::Research;app.focus=0;app.treeFocus=true;
+    auto researchFrame=[&](){io.DeltaTime=1.f/60;ImGui::NewFrame();app.researchTree(1280,720);ImGui::EndFrame();};
+    io.AddMousePosEvent(600,420);researchFrame();researchFrame();
+    auto beforePan=app.researchPan;float beforeZoom=app.researchZoom;
+    io.AddMouseWheelEvent(0,-1);researchFrame();check(app.researchPan.y<beforePan.y&&app.researchZoom==beforeZoom,"Research wheel scrolls the graph without scaling cards");
+    io.AddKeyEvent(ImGuiMod_Ctrl,true);io.AddMouseWheelEvent(0,-1);researchFrame();check(app.researchZoom<beforeZoom,"Ctrl wheel zooms research graph out");
+    io.AddKeyEvent(ImGuiMod_Ctrl,false);researchFrame();
     ImGui::DestroyContext();std::cout<<"Passed "<<checks<<" native input integration checks\n";return 0;
   }catch(const std::exception& e){std::cerr<<"Input check failed after "<<checks<<": "<<e.what()<<"\n";ImGui::DestroyContext();return 1;}
 }

@@ -110,13 +110,21 @@
     if(fit&&!shown.empty()){
       float minX=1e9f,minY=1e9f,maxX=0,maxY=0;for(int id:shown){auto p=position(id);minX=std::min(minX,p.x);minY=std::min(minY,p.y);maxX=std::max(maxX,p.x+cardW);maxY=std::max(maxY,p.y+cardH);}
       float fitWidth=size.x-68;if(researchSelected>=0)fitWidth=std::max(460.0f,fitWidth-370.0f);
-      researchZoom=std::clamp(std::min(fitWidth/(maxX-minX),(size.y-62)/(maxY-minY)),.82f,1.1f);
+      researchZoom=std::clamp(std::min(fitWidth/(maxX-minX),(size.y-62)/(maxY-minY)),.25f,1.1f);
       researchPan={32-minX*researchZoom,(size.y-(maxY-minY)*researchZoom)*.5f-minY*researchZoom};
       // Keep the active selection accessible even when a mature tree requires panning.
       if(centerCurrent&&researchSelected>=0){auto p=position(researchSelected);researchPan.x=std::min(32.0f,size.x-cardW*researchZoom-370)-p.x*researchZoom;researchPan.y=(size.y-cardH*researchZoom)*.45f-p.y*researchZoom;}
     }
     bool hovered=ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
-    if(hovered){auto& io=ImGui::GetIO();if(ImGui::IsMouseDragging(ImGuiMouseButton_Middle)||(ImGui::IsMouseDragging(ImGuiMouseButton_Left)&&!ImGui::IsAnyItemActive())){researchPan.x+=io.MouseDelta.x;researchPan.y+=io.MouseDelta.y;}if(io.MouseWheel!=0){float old=researchZoom;researchZoom=std::clamp(researchZoom*std::pow(1.12f,io.MouseWheel),.82f,1.6f);float factor=researchZoom/old;researchPan.x=(io.MousePos.x-cp.x)-(io.MousePos.x-cp.x-researchPan.x)*factor;researchPan.y=(io.MousePos.y-cp.y)-(io.MousePos.y-cp.y-researchPan.y)*factor;}}
+    if(hovered){
+      auto& io=ImGui::GetIO();
+      if(ImGui::IsMouseDragging(ImGuiMouseButton_Middle)||ImGui::IsMouseDragging(ImGuiMouseButton_Right)||(ImGui::IsMouseDragging(ImGuiMouseButton_Left)&&!ImGui::IsAnyItemActive())){researchPan.x+=io.MouseDelta.x;researchPan.y+=io.MouseDelta.y;}
+      if(io.KeyCtrl&&io.MouseWheel!=0){
+        float old=researchZoom;researchZoom=std::clamp(researchZoom*std::pow(1.15f,io.MouseWheel),.25f,2.5f);float factor=researchZoom/old;
+        researchPan.x=(io.MousePos.x-cp.x)-(io.MousePos.x-cp.x-researchPan.x)*factor;researchPan.y=(io.MousePos.y-cp.y)-(io.MousePos.y-cp.y-researchPan.y)*factor;
+      }else{researchPan.y+=io.MouseWheel*65;researchPan.x+=io.MouseWheelH*65;if(io.KeyShift){researchPan.x+=io.MouseWheel*65;researchPan.y-=io.MouseWheel*65;}}
+    }
+
     const float z=researchZoom,nw=cardW*z,nh=cardH*z;
     auto screenPos=[&](int id){auto p=position(id);return ImVec2{cp.x+researchPan.x+p.x*z,cp.y+researchPan.y+p.y*z};};
     draw->PushClipRect(cp,{cp.x+size.x,cp.y+size.y},true);
@@ -147,7 +155,7 @@
     }
     if(shown.empty())draw->AddText({cp.x+30,cp.y+40},soft,"No revealed technology matches your search.");
     draw->PopClipRect();ImGui::EndChild();
-    ImGui::SetCursorPos({25,ImGui::GetWindowHeight()-29});ImGui::TextColored({.43f,.63f,.77f,1},"Drag to pan  /  Scroll to zoom  /  Esc to return");
+    ImGui::SetCursorPos({25,ImGui::GetWindowHeight()-29});ImGui::TextColored({.43f,.63f,.77f,1},"Wheel: scroll  /  Ctrl+wheel: zoom  /  Right drag: pan");
     ImGui::EndChild();ImGui::SameLine(0,0);
     ImGui::BeginChild("##nationalqueues",{queueWidth,0},ImGuiChildFlags_None);
     ImGui::TextColored({.68f,.81f,.85f,1},"SCIENCE / PRODUCTION");ImGui::Separator();if(button("Exit research"))panel=None;ImGui::Spacing();

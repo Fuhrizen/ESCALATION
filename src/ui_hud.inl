@@ -6,7 +6,7 @@
   float inspectorWidth(float w) const{return std::min(360.f*uiScale,w-224.f*uiScale);}
   float inspectorHeight(float h) const{return std::min(410.f*uiScale,h-hudHeight()-24.f*uiScale);}
   float navigationReserveHeight() const{return 430.f*uiScale;}
-  int readyItemKinds() const {int count=0;for(int id=0;id<16;++id)if(sim.state.buildingInventory[id]>0)++count;for(int id=0;id<9;++id)if(sim.readyUnitCount(UnitType(id))>0)++count;return count;}
+  int readyItemKinds() const {int count=0;for(int id=0;id<16;++id)if(sim.state.buildingInventory[id]>0)++count;for(int id=0;id<int(UnitType::Count);++id)if(sim.readyUnitCount(UnitType(id))>0)++count;return count;}
   float readyRailWidth(float h) const {int rows=std::max(1,int((h-hudHeight()-navigationReserveHeight()-16.f*uiScale)/(64.f*uiScale)));return 64.f*uiScale*std::max(1,(readyItemKinds()+rows-1)/rows);}
   float readyRailWidth() const{return readyRailWidth(ImGui::GetIO().DisplaySize.y);}
   bool mapOverlayHit(Point p,float w,float h) const{
@@ -47,8 +47,8 @@
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0.f);
     ImGui::Begin("Ready rail",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse|ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::PopStyleVar();
-    int index=0;auto item=[&](int kind,int count,const char* name,bool building,int id){int col=index/rows,row=index%rows;++index;ImGui::PushID(kind+100);ImGui::SetCursorPos({4.f*s+col*64.f*s,12.f*s+row*cell});auto p=ImGui::GetCursorScreenPos();bool active=building?construction==id:readyUnitPlacement==id;ImGui::InvisibleButton("Deploy ready item",{56.f*s,56.f*s});bool hover=ImGui::IsItemHovered();auto*d=ImGui::GetWindowDrawList();ImVec2 hex[6];for(int j=0;j<6;++j){float a=3.14159265f*j/3.f;hex[j]={p.x+28.f*s+27.f*s*std::cos(a),p.y+28.f*s+27.f*s*std::sin(a)};}d->AddConvexPolyFilled(hex,6,active?IM_COL32(12,65,88,255):IM_COL32(4,22,34,225));d->AddPolyline(hex,6,active||hover?IM_COL32(72,217,239,255):IM_COL32(59,135,157,210),ImDrawFlags_Closed,active?3.f:1.4f);command_icons::icon(d,{p.x+28.f*s,p.y+29.f*s},34.f*s,kind,IM_COL32(226,239,255,255));auto qty=std::to_string(count);auto sz=ImGui::CalcTextSize(qty.c_str());float badge=std::max(11.f*s,sz.x*.5f+3.f*s);ImVec2 counter{p.x+56.f*s-badge,p.y+std::max(5.f*s,badge-8.f*s)};d->AddCircleFilled(counter,badge,IM_COL32(44,143,249,255));d->AddText({counter.x-sz.x*.5f,counter.y-sz.y*.5f},IM_COL32(255,255,255,255),qty.c_str());if(hover){ImGui::BeginTooltip();ImGui::Text("%s · %d ready",name,count);ImGui::TextUnformatted(building?(id==int(Facility::Shipyard)?"Click to place on controlled coast":"Click to place on controlled land"):(navalUnit(UnitType(id))?"Click to deploy in friendly coastal waters near a shipyard":"Click to deploy on controlled land"));ImGui::EndTooltip();}if(ImGui::IsItemClicked()){construction=building?id:-1;readyUnitPlacement=building?-1:id;panel=None;commandMode=false;notice(std::string(!building&&navalUnit(UnitType(id))?"Choose friendly coastal waters near a shipyard to deploy ":building&&id==int(Facility::Shipyard)?"Choose controlled coast to place ":building?"Choose controlled land to place ":"Choose controlled land to deploy ")+name);}ImGui::PopID();};
-    for(int id=0;id<9;++id){int count=sim.readyUnitCount(UnitType(id));if(count)item(id,count,unitNames[id],false,id);}for(int id=0;id<16;++id)if(sim.state.buildingInventory[id]>0)item(20+id,sim.state.buildingInventory[id],facilityNames[id],true,id);
+    int index=0;auto item=[&](int kind,int count,const char* name,bool building,int id){int col=index/rows,row=index%rows;++index;ImGui::PushID(kind+100);ImGui::SetCursorPos({4.f*s+col*64.f*s,12.f*s+row*cell});auto p=ImGui::GetCursorScreenPos();bool active=building?construction==id:readyUnitPlacement==id;ImGui::InvisibleButton("Deploy ready item",{56.f*s,56.f*s});bool hover=ImGui::IsItemHovered();auto*d=ImGui::GetWindowDrawList();ImVec2 hex[6];for(int j=0;j<6;++j){float a=3.14159265f*j/3.f;hex[j]={p.x+28.f*s+27.f*s*std::cos(a),p.y+28.f*s+27.f*s*std::sin(a)};}d->AddConvexPolyFilled(hex,6,active?IM_COL32(12,65,88,255):IM_COL32(4,22,34,225));d->AddPolyline(hex,6,active||hover?IM_COL32(72,217,239,255):IM_COL32(59,135,157,210),ImDrawFlags_Closed,active?3.f:1.4f);command_icons::icon(d,{p.x+28.f*s,p.y+29.f*s},34.f*s,kind,IM_COL32(226,239,255,255));auto qty=std::to_string(count);auto sz=ImGui::CalcTextSize(qty.c_str());float badge=std::max(11.f*s,sz.x*.5f+3.f*s);ImVec2 counter{p.x+56.f*s-badge,p.y+std::max(5.f*s,badge-8.f*s)};d->AddCircleFilled(counter,badge,IM_COL32(44,143,249,255));d->AddText({counter.x-sz.x*.5f,counter.y-sz.y*.5f},IM_COL32(255,255,255,255),qty.c_str());if(hover){ImGui::BeginTooltip();ImGui::Text("%s · %d ready",name,count);ImGui::TextUnformatted(building?(id==int(Facility::Shipyard)?"Click to place on controlled coast":"Click to place on controlled land"):(navalUnit(UnitType(id))?"Click to deploy in friendly coastal waters near a shipyard":"Click to deploy on controlled land"));ImGui::EndTooltip();}if(ImGui::IsItemClicked()){measuring=false;measurePoints=0;construction=building?id:-1;readyUnitPlacement=building?-1:id;panel=None;commandMode=false;notice(std::string(!building&&navalUnit(UnitType(id))?"Choose friendly coastal waters near a shipyard to deploy ":building&&id==int(Facility::Shipyard)?"Choose controlled coast to place ":building?"Choose controlled land to place ":"Choose controlled land to deploy ")+name);}ImGui::PopID();};
+    for(int id=0;id<int(UnitType::Count);++id){int count=sim.readyUnitCount(UnitType(id));if(count)item(id,count,unitNames[id],false,id);}for(int id=0;id<16;++id)if(sim.state.buildingInventory[id]>0)item(20+id,sim.state.buildingInventory[id],facilityNames[id],true,id);
     ImGui::End();ImGui::PopStyleColor();ImGui::PopStyleVar();
   }
   void navigation(float h){
@@ -58,12 +58,42 @@
     ImGui::Begin("Command navigation",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar);
     const char* names[]={"Research","Production","Forces","Log"};const Panel pages[]={Research,Build,Forces,Log};const int icons[]={26,24,0,30};
     for(int i=0;i<4;++i){ImGui::PushID(i);ImGui::SetCursorPos({i*49.f*s,120*s});auto p=ImGui::GetCursorScreenPos();ImGui::InvisibleButton(names[i],{46*s,46*s});bool hot=ImGui::IsItemHovered(),active=panel==pages[i];ImVec2 c{p.x+23*s,p.y+23*s};ImVec2 q[6];for(int j=0;j<6;++j){float a=float(j)*3.14159265f/3.f;q[j]={c.x+23*s*std::cos(a),c.y+23*s*std::sin(a)};}d->AddConvexPolyFilled(q,6,IM_COL32(5,27,42,232));d->AddPolyline(q,6,active||hot?IM_COL32(71,224,244,255):IM_COL32(46,119,143,210),ImDrawFlags_Closed,1.5f*s);command_icons::icon(d,c,26*s,icons[i],IM_COL32(77,205,227,255));tooltip(names[i]);if(ImGui::IsItemClicked())toggle(pages[i]);ImGui::PopID();}
+    ImGui::SetCursorPos({12*s,76*s});
+    if(ImGui::Button(measuring?"Exit measure":"Measure km",{145*s,30*s})){
+      measuring=!measuring;measurePoints=0;panel=None;attackMode=0;commandMode=false;construction=readyUnitPlacement=-1;
+      notice(measuring?"Click two map points to measure their great-circle distance":"Measurement closed");
+    }
+    tooltip("Compare two points against weapon ranges. Distance follows the Earth's surface.");
     ImVec2 c{w-83*s,h-86*s};d->AddCircleFilled(c,74*s,IM_COL32(2,14,27,238),64);d->AddCircle(c,73*s,IM_COL32(60,153,182,220),64,2*s);d->AddCircle(c,53*s,IM_COL32(12,102,145,240),64,3*s);
     for(int j=0;j<32;++j){float a=3.14159265f+(j/31.f)*3.14159265f;ImVec2 a1{c.x+60*s*std::cos(a),c.y+60*s*std::sin(a)},a2{c.x+68*s*std::cos(a),c.y+68*s*std::sin(a)};d->AddLine(a1,a2,j<8+int(std::log2(speed))*8?IM_COL32(13,159,216,255):IM_COL32(25,65,85,210),3*s);}
     ImGui::SetCursorScreenPos({c.x-42*s,c.y-40*s});ImGui::InvisibleButton("Pause / play",{84*s,80*s});if(ImGui::IsItemClicked()){paused=!paused;audio.play(SoundCue::Click);}tooltip(paused?"Resume simulation [Space]":"Pause simulation [Space]");
     if(paused)d->AddTriangleFilled({c.x-12*s,c.y-24*s},{c.x-12*s,c.y+24*s},{c.x+25*s,c.y},IM_COL32(120,228,255,255));else{d->AddRectFilled({c.x-16*s,c.y-22*s},{c.x-5*s,c.y+22*s},IM_COL32(120,228,255,255));d->AddRectFilled({c.x+5*s,c.y-22*s},{c.x+16*s,c.y+22*s},IM_COL32(120,228,255,255));}
     ImGui::SetCursorScreenPos({c.x-105*s,c.y-62*s});if(ImGui::Button("+",{25*s,25*s}))speed=std::min(8,speed*2);ImGui::SetCursorScreenPos({c.x-105*s,c.y-32*s});if(ImGui::Button("-",{25*s,25*s}))speed=std::max(1,speed/2);ImGui::SetCursorScreenPos({c.x-111*s,c.y+7*s});ImGui::Text("%dx",speed);
     ImGui::End();ImGui::PopStyleVar(2);
+    if(measuring&&panel==None)measurementOverlay();
+  }
+  void measurementOverlay(){
+    if(!measurePoints)return;
+    Point end=measureEnd;
+    if(measurePoints==1){auto geo=camera.unproject(pointer);if(geo)end=*geo;}
+    const double radians=3.141592653589793/180.;
+    auto vector=[&](Point p){double lon=p.x*radians,lat=p.y*radians;return std::array<double,3>{std::cos(lat)*std::cos(lon),std::cos(lat)*std::sin(lon),std::sin(lat)};};
+    auto a=vector(measureStart),b=vector(end);
+    double angle=std::acos(std::clamp(a[0]*b[0]+a[1]*b[1]+a[2]*b[2],-1.,1.)),sine=std::sin(angle);
+    auto* draw=ImGui::GetForegroundDrawList();Point previous{};bool previousVisible=false;
+    for(int i=0;i<=96;++i){
+      double t=i/96.;Point geo;
+      if(std::abs(sine)>.00001){double wa=std::sin((1-t)*angle)/sine,wb=std::sin(t*angle)/sine;double x=wa*a[0]+wb*b[0],y=wa*a[1]+wb*b[1],z=wa*a[2]+wb*b[2];geo={std::atan2(y,x)/radians,std::atan2(z,std::hypot(x,y))/radians};}
+      else geo={measureStart.x+std::remainder(end.x-measureStart.x,360.)*t,measureStart.y+(end.y-measureStart.y)*t};
+      bool visible=false;auto point=camera.project(geo,&visible);
+      if(visible&&previousVisible&&std::hypot(point.x-previous.x,point.y-previous.y)<camera.width*.5)draw->AddLine({float(previous.x),float(previous.y)},{float(point.x),float(point.y)},IM_COL32(255,217,105,245),2*uiScale);
+      if((i==0||i==96)&&visible){draw->AddCircle({float(point.x),float(point.y)},7*uiScale,IM_COL32(255,226,144,255),20,2*uiScale);}
+      previous=point;previousVisible=visible;
+    }
+    char label[96];std::snprintf(label,sizeof(label),"SURFACE DISTANCE  %.1f km%s",distanceKm(measureStart,end),measurePoints==1?" / choose endpoint":"");
+    ImVec2 at{readyRailWidth()+16*uiScale,hudHeight()+40*uiScale};auto size=ImGui::CalcTextSize(label);
+    draw->AddRectFilled({at.x-8,at.y-6},{at.x+size.x+8,at.y+size.y+6},IM_COL32(5,22,35,230),4);
+    draw->AddText(at,IM_COL32(255,226,144,255),label);
   }
   void hud(float w,float h){
     float s=uiScale;ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{10*s,8*s});ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0.f);

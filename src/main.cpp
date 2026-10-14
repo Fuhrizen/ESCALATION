@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -124,6 +125,7 @@ struct App {
   Panel panel=None;
   int selectedNation=-1,selectedRegion=-1,selectedSite=-1,selectedSettlement=-1,selectedWorldCity=-1,selectedUnit=-1,construction=-1,readyUnitPlacement=-1,focus=5,speed=1;
   bool paused=true,regionOpen=false,unitOpen=false,nationOpen=false,commandMode=false,showRanges=true,autoResearch=false,leftStarted=false,rightDragged=false,treeFocus=false;
+  bool measuring=false; int measurePoints=0; Point measureStart{},measureEnd{};
   int attackMode=0; // 1: unit point attack, 2: conventional silo, 3: confirmed nuclear silo
   double noticeRemaining=0;
   double accumulator=0;
@@ -172,7 +174,7 @@ struct App {
   }
   void clearSelection(){
     selectedRegion=selectedSite=selectedSettlement=selectedWorldCity=selectedUnit=construction=readyUnitPlacement=-1;
-    attackMode=0;
+    attackMode=0;measuring=false;measurePoints=0;
     selectedUnits.clear();
     for(auto& group:controlGroups)group.clear();
     orderPreviews.clear();
@@ -250,7 +252,7 @@ struct App {
   }
   void toggle(Panel wanted){
     audio.play(SoundCue::Click);
-    cancelGestures();construction=readyUnitPlacement=-1;commandMode=false;attackMode=0;
+    cancelGestures();construction=readyUnitPlacement=-1;commandMode=false;attackMode=0;measuring=false;measurePoints=0;
     panel=panel==wanted?None:wanted;
     if(panel==Research)treeFocus=true;
   }
@@ -265,6 +267,11 @@ struct App {
       return;
     }
     if(screen!=Game)return;
+    if(measuring){
+      if(measurePoints!=1){measureStart=geo;measureEnd=geo;measurePoints=1;notice("Click the second point to measure surface distance");}
+      else {measureEnd=geo;measurePoints=2;notice("Distance measured. Click to begin a new measurement; Escape exits");}
+      return;
+    }
     if(attackMode){
       bool issued=false;std::string reason;
       if(attackMode==1){for(int id:selectedUnits){reason=sim.unitAttackReason(size_t(id),geo);issued=sim.orderUnitAttackAt(size_t(id),geo)||issued;}}
@@ -418,6 +425,7 @@ struct App {
     }
     if(ImGui::IsKeyPressed(ImGuiKey_Escape)&&screen==Game&&windowFocused&&(pauseOpen||!popupOpen)){
       if(pauseOpen){pauseOpen=false;paused=wasPaused;saveSettings();}
+      else if(measuring){measuring=false;measurePoints=0;}
       else if(construction>=0||readyUnitPlacement>=0||commandMode||attackMode){construction=readyUnitPlacement=-1;commandMode=false;attackMode=0;}
       else if(panel!=None){panel=None;cancelGestures();}
       else openPause();
@@ -444,7 +452,8 @@ struct App {
       if(ImGui::IsMouseClicked(ImGuiMouseButton_Right)){rightDragged=false;rightStarted=true;rightGesture.begin(pointer);panButton=ImGuiMouseButton_Right;}
       if(ImGui::IsMouseClicked(ImGuiMouseButton_Middle))panButton=ImGuiMouseButton_Middle;
       if(rightStarted&&ImGui::IsMouseReleased(ImGuiMouseButton_Right)&&!rightDragged){
-        if(construction>=0||readyUnitPlacement>=0||attackMode){
+        if(measuring){measuring=false;measurePoints=0;notice("Measurement closed");}
+        else if(construction>=0||readyUnitPlacement>=0||attackMode){
           construction=readyUnitPlacement=-1;attackMode=0;
           notice("Construction placement cancelled");
         }
@@ -475,7 +484,7 @@ struct App {
     if(leftStarted&&ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
       leftStarted=false;
       bool dragged=leftGesture.dragged(8);
-      if(dragged&&screen==Game&&construction<0&&readyUnitPlacement<0&&attackMode==0&&mapInput){
+      if(dragged&&!measuring&&screen==Game&&construction<0&&readyUnitPlacement<0&&attackMode==0&&mapInput){
         if(!io.KeyShift)selectedUnits.clear();
         for(size_t i=0;i<sim.state.units.size();++i){
           auto& u=sim.state.units[i];
