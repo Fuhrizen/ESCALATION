@@ -36,7 +36,7 @@ namespace escalation {
     for(int i=14;i<28;++i)effect(i,"Ground incoming damage -2%");
     for(int i=28;i<42;++i)effect(i,"Ground weapon range +2%");
     effect(46,"Unlock special forces");effect(48,"Special forces damage +15%");effect(49,"Special forces movement +15%");
-    effect(17,"MANPADS equipment reserved; air targets are not implemented");effect(18,"Unlock independent anti-tank guided missile mount: 0.5–7 km, armour targets only");effect(59,"Unlock nuclear warhead production; requires Computing centres");effect(60,"Unlock nuclear delivery from an operational missile site");effect(62,"Unlock mobile missile batteries and missile sites");effect(63,"Missile damage +15%");effect(65,"Missile range +20%");
+    effect(17,"MANPADS equipment reserved; air targets are not implemented");effect(18,"Unlock independent anti-tank guided missile mount: 0.5–40 km, armour targets only");effect(58,"Unlock conventional ballistic missile sites and point strikes");effect(59,"Unlock nuclear warhead production; requires Computing centres");effect(60,"Unlock nuclear delivery from an operational missile site");effect(62,"Unlock mobile missile batteries and missile sites");effect(63,"Missile damage +15%");effect(65,"Missile range +20%");
     for(int i=70;i<84;++i)effect(i,"Regional production +6%");
     for(int i=84;i<98;++i)effect(i,"Research output +8%");
     for(int i=98;i<112;++i)effect(i,"Ground movement +3%");
@@ -275,7 +275,7 @@ namespace escalation {
     if(state.sites.size()>=1000)return "Campaign construction history capacity reached";
     if(type==Facility::Shipyard&&!hasTech(112))return "Requires Naval foundations";
     if(type==Facility::Radar&&!hasTech(29))return "Requires Ground surveillance";
-    if(type==Facility::Silo&&!hasTech(62)&&!hasTech(59))return "Requires Mobile launchers or Nuclear deterrence";
+    if(type==Facility::Silo&&!hasTech(58))return "Requires Guided missiles";
     int count=0;
     for(auto& s:state.sites)if(s.region==region&&!s.destroyed)++count;
     if(count>=8)return "Region has reached its building capacity";
@@ -289,7 +289,7 @@ namespace escalation {
     if(reserved>=1000)return "Ready inventory is full";
     if(type==Facility::Shipyard&&!hasTech(112))return "Requires Naval foundations";
     if(type==Facility::Radar&&!hasTech(29))return "Requires Ground surveillance";
-    if(type==Facility::Silo&&!hasTech(62)&&!hasTech(59))return "Requires Mobile launchers or Nuclear deterrence";
+    if(type==Facility::Silo&&!hasTech(58))return "Requires Guided missiles";
     return "";
   }
   bool Simulation::queueBuilding(Facility type){
@@ -418,18 +418,10 @@ namespace escalation {
     return true;
   }
   bool Simulation::launchNuclear(int region){
-    if(state.victory||state.defeat||!state.war||state.stock[6]<1||!hasTech(60)||region<0||region>=int(state.regions.size())||state.regions[region].owner!=state.enemy)return false;
-    bool ready=false;
-    for(const auto& site:state.sites)if(site.type==Facility::Silo&&!site.destroyed&&site.enabled&&site.remaining<=0&&state.regions[site.region].owner==state.player)ready=true;
-    if(!ready)return false;
-    state.stock[6]-=1;state.nuclearUsed=true;
-    for(auto& site:state.sites)if(site.region==region){site.destroyed=true;site.enabled=false;}
-    for(auto& unit:state.units){if(unit.region==region)unit.health=0;else if(unit.owner==state.player)unit.health*=0.45;unit.moving=false;unit.path.clear();unit.waypoints.clear();unit.pendingDestinations.clear();}
-    state.stability=std::max(0.0,state.stability-65);
-    for(auto& site:state.sites)if(state.regions[site.region].owner==state.player&&site.type!=Facility::Depot)site.enabled=false;
-    state.target=-1;state.defeat=true;state.war=false;
-    log("Scripted second strike: industry devastated. Mutual destruction ends the campaign.");
-    return true;
+    if(region<0||region>=int(state.regions.size())||state.regions[region].owner!=state.enemy)return false;
+    int main=mainSettlement(region);Point target=main>=0?state.settlements[main].position:state.regions[region].center;
+    for(size_t n=0;n<state.sites.size();++n)if(launchMissile(n,target,true))return true;
+    return false;
   }
   void Simulation::save(const std::string& path) const {
     if(state.player<0)throw std::runtime_error("No campaign to save");
@@ -437,7 +429,7 @@ namespace escalation {
     auto n=[&](const char* k,double v){
       o[k]=num(v);
     };
-    n("version",7);
+    n("version",8);
     n("simple",state.simpleEconomy);
     o["player"]=str(world_->countries[state.player].code);
     o["enemy"]=str(world_->countries[state.enemy].code);
@@ -479,7 +471,7 @@ namespace escalation {
       v["type"]=num(int(s.type));
       v["remaining"]=num(s.remaining);
       v["enabled"]=num(s.enabled);
-      v["x"]=num(s.position.x);v["y"]=num(s.position.y);v["destroyed"]=num(s.destroyed);
+      v["x"]=num(s.position.x);v["y"]=num(s.position.y);v["destroyed"]=num(s.destroyed);v["missileCooldown"]=num(s.missileCooldown);
       sites.push_back(Json(v));
     }
     o["sites"]=Json(sites);
@@ -488,7 +480,7 @@ namespace escalation {
     o["buildingQueue"]=Json(buildings);
     Array ready;for(int count:state.buildingInventory)ready.push_back(num(count));o["buildingInventory"]=Json(ready);
     Array units;for(auto& u:state.units){Object v;v["owner"]=str(world_->countries[u.owner].code);v["region"]=num(u.region);v["target"]=num(u.target);v["source"]=num(u.sourceSite);v["type"]=num(int(u.type));v["x"]=num(u.position.x);v["y"]=num(u.position.y);v["dx"]=num(u.destination.x);v["dy"]=num(u.destination.y);v["health"]=num(u.health);v["remaining"]=num(u.remaining);v["total"]=num(u.total);v["moving"]=num(u.moving);v["deployed"]=num(u.deployed);v["portServiceSeconds"]=num(u.portServiceSeconds);Array path;for(int r:u.path)path.push_back(num(r));v["path"]=Json(path);Array waypoints;for(Point p:u.waypoints){Array xy{num(p.x),num(p.y)};waypoints.push_back(Json(xy));}v["waypoints"]=Json(waypoints);Array pending;for(Point p:u.pendingDestinations){Array xy{num(p.x),num(p.y)};pending.push_back(Json(xy));}v["pendingDestinations"]=Json(pending);auto doubles=[&](const char* key,const std::vector<double>& values){Array a;for(double x:values)a.push_back(num(x));v[key]=Json(a);};auto ints=[&](const char* key,const std::vector<int>& values){Array a;for(int x:values)a.push_back(num(x));v[key]=Json(a);};doubles("weaponCooldowns",u.weaponCooldowns);doubles("weaponReloads",u.weaponReloads);ints("weaponAmmo",u.weaponAmmo);ints("weaponReserve",u.weaponReserve);units.push_back(Json(v));}o["units"]=Json(units);
-    Array engagements;for(const auto& e:state.engagements){Object v;v["ox"]=num(e.origin.x);v["oy"]=num(e.origin.y);v["tx"]=num(e.target.x);v["ty"]=num(e.target.y);v["attacker"]=num(e.attacker);v["defender"]=num(e.defender);v["weapon"]=str(e.weaponId);v["mask"]=num(e.targetMask);v["guided"]=num(e.guided);v["damage"]=num(e.damage);v["remaining"]=num(e.remaining);v["total"]=num(e.total);v["radius"]=num(e.impactRadiusKm);engagements.push_back(Json(v));}o["engagements"]=Json(engagements);
+    Array engagements;for(const auto& e:state.engagements){Object v;v["ox"]=num(e.origin.x);v["oy"]=num(e.origin.y);v["tx"]=num(e.target.x);v["ty"]=num(e.target.y);v["attacker"]=num(e.attacker);v["defender"]=num(e.defender);v["weapon"]=str(e.weaponId);v["mask"]=num(e.targetMask);v["guided"]=num(e.guided);v["ballistic"]=num(e.ballistic);v["nuclear"]=num(e.nuclear);v["areaStrike"]=num(e.areaStrike);v["impactSeconds"]=num(e.impactSeconds);v["owner"]=num(e.owner);v["sourceSite"]=num(e.sourceSite);v["damage"]=num(e.damage);v["remaining"]=num(e.remaining);v["total"]=num(e.total);v["radius"]=num(e.impactRadiusKm);engagements.push_back(Json(v));}o["engagements"]=Json(engagements);
     Array routes;
     for(auto& r:state.routes){
       Object v;
@@ -547,7 +539,7 @@ namespace escalation {
       if(std::floor(v)!=v)throw std::runtime_error("Non-integral save index");
       return int(v);
     };
-    int version=integer(o,"version",1,7);
+    int version=integer(o,"version",1,8);
     int player=world_->find(string(o,"player")),enemy=world_->find(string(o,"enemy"));
     Simulation candidate(*world_);
     candidate.start(player,Field(integer(o,"focus",0,version>=7?8:7)),version>=2?bool(integer(o,"simple",0,1)):false);
@@ -618,7 +610,7 @@ namespace escalation {
     c.sites.clear();
     auto& sites=asArray(field(o,"sites"));
     if(sites.size()>1000)throw std::runtime_error("Too many sites");
-    for(auto& s:sites){Site site{integer(s,"region",0,int(c.regions.size())-1),Facility(integer(s,"type",0,version>=2?15:9)),bounded(s,"remaining",0,120000),0,bool(integer(s,"enabled",0,1))};site.position=version>=2?Point{bounded(s,"x",-720,720),bounded(s,"y",-90,90)}:c.regions[site.region].center;site.destroyed=version>=2?bool(integer(s,"destroyed",0,1)):false;c.sites.push_back(site);}
+    for(auto& s:sites){Site site{integer(s,"region",0,int(c.regions.size())-1),Facility(integer(s,"type",0,version>=2?15:9)),bounded(s,"remaining",0,120000),0,bool(integer(s,"enabled",0,1))};site.position=version>=2?Point{bounded(s,"x",-720,720),bounded(s,"y",-90,90)}:c.regions[site.region].center;site.destroyed=version>=2?bool(integer(s,"destroyed",0,1)):false;if(version>=8)site.missileCooldown=bounded(s,"missileCooldown",0,120000);c.sites.push_back(site);}
     if(version>=4){
       const auto& buildings=asArray(field(o,"buildingQueue"));
       if(buildings.size()>64)throw std::runtime_error("Construction queue too long");
@@ -689,7 +681,7 @@ namespace escalation {
       }
     }
     c.engagements.clear();
-    if(version>=7){const auto& shots=asArray(field(o,"engagements"));if(shots.size()>10000)throw std::runtime_error("Too many engagements");for(const auto& v:shots){Engagement e;e.origin={bounded(v,"ox",-720,720),bounded(v,"oy",-90,90)};e.target={bounded(v,"tx",-720,720),bounded(v,"ty",-90,90)};e.attacker=integer(v,"attacker",0,int(c.units.size())-1);e.defender=integer(v,"defender",0,int(c.units.size())-1);e.weaponId=string(v,"weapon");e.targetMask=unsigned(integer(v,"mask",1,15));e.guided=bool(integer(v,"guided",0,1));e.damage=bounded(v,"damage",0,10000);e.total=bounded(v,"total",0,120000);e.remaining=bounded(v,"remaining",0,e.total);e.impactRadiusKm=bounded(v,"radius",0,1000);if(e.weaponId.empty()||e.weaponId.size()>100)throw std::runtime_error("Invalid engagement weapon");c.engagements.push_back(std::move(e));}}
+    if(version>=7){const auto& shots=asArray(field(o,"engagements"));if(shots.size()>10000)throw std::runtime_error("Too many engagements");for(const auto& v:shots){Engagement e;e.origin={bounded(v,"ox",-720,720),bounded(v,"oy",-90,90)};e.target={bounded(v,"tx",-720,720),bounded(v,"ty",-90,90)};e.attacker=integer(v,"attacker",version>=8?-1:0,int(c.units.size())-1);e.defender=integer(v,"defender",version>=8?-1:0,int(c.units.size())-1);e.weaponId=string(v,"weapon");e.targetMask=unsigned(integer(v,"mask",1,15));e.guided=bool(integer(v,"guided",0,1));if(version>=8){e.ballistic=bool(integer(v,"ballistic",0,1));e.nuclear=bool(integer(v,"nuclear",0,1));e.areaStrike=bool(integer(v,"areaStrike",0,1));e.impactSeconds=bounded(v,"impactSeconds",0,3);e.owner=integer(v,"owner",-1,int(world_->countries.size())-1);e.sourceSite=integer(v,"sourceSite",-1,int(c.sites.size())-1);if(e.areaStrike&&e.owner<0)throw std::runtime_error("Invalid strike owner");}e.damage=bounded(v,"damage",0,10000);e.total=bounded(v,"total",0,120000);e.remaining=bounded(v,"remaining",0,e.total);e.impactRadiusKm=bounded(v,"radius",0,1000);if(e.weaponId.empty()||e.weaponId.size()>100)throw std::runtime_error("Invalid engagement weapon");c.engagements.push_back(std::move(e));}}
     c.routes.clear();
     auto& routes=asArray(field(o,"routes"));
     if(routes.size()>2500)throw std::runtime_error("Too many routes");

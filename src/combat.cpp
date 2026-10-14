@@ -43,10 +43,57 @@ double Simulation::frontlinePressure(Point p) const {
   return std::clamp(pressure,-1.0,1.0);
 }
 
+double Simulation::siteMissileRange(size_t index) const {
+  if(index>=state.sites.size()||state.sites[index].type!=Facility::Silo)return 0;
+  double range=hasTech(60)?12000:1800;if(hasTech(65))range*=1.2;return range;
+}
+std::string Simulation::missileStrikeReason(size_t index,Point target,bool nuclear) const {
+  if(state.player<0||state.victory||state.defeat)return "No active campaign";
+  if(!state.war)return "Declare war before firing";
+  if(index>=state.sites.size())return "Select a missile site";
+  const auto& site=state.sites[index];
+  if(site.type!=Facility::Silo||site.destroyed||!site.enabled||site.remaining>0||site.region<0||site.region>=int(state.regions.size())||state.regions[site.region].owner!=state.player)return "Requires an operational friendly missile site";
+  if(!hasTech(58))return "Requires Guided missiles";
+  if(nuclear&&(!hasTech(60)||state.stock[int(Resource::Warheads)]<1))return "Requires nuclear delivery research and a ready warhead";
+  if(site.missileCooldown>0)return "Missile site reloading";
+  if(!std::isfinite(target.x)||!std::isfinite(target.y)||std::abs(target.y)>90)return "Invalid target";
+  int r=regionAt(target);if(r<0||state.regions[r].owner!=state.enemy)return "Target hostile controlled land";
+  double distance=distanceKm(site.position,target);if(distance<25||distance>siteMissileRange(index))return "Target outside ballistic missile envelope";
+  if(state.engagements.size()>=4096)return "Projectile capacity reached";
+  return "";
+}
+bool Simulation::launchMissile(size_t index,Point target,bool nuclear){
+  if(!missileStrikeReason(index,target,nuclear).empty())return false;
+  auto& site=state.sites[index];Engagement shot;shot.origin=site.position;shot.target=target;shot.owner=state.player;shot.sourceSite=int(index);shot.weaponId=nuclear?"nuclear_ballistic":"ballistic";shot.targetMask=nuclear?7:1;shot.ballistic=true;shot.nuclear=nuclear;shot.areaStrike=true;shot.damage=nuclear?250:45;shot.impactRadiusKm=nuclear?65:8;shot.total=shot.remaining=std::max(8.0,distanceKm(site.position,target)/25.0);state.engagements.push_back(shot);site.missileCooldown=45;
+  if(nuclear){--state.stock[int(Resource::Warheads)];state.nuclearUsed=true;}
+  log(nuclear?"Nuclear ballistic missile launched":"Conventional ballistic missile launched");return true;
+}
+std::string Simulation::unitAttackReason(size_t index,Point target) const {
+  if(state.player<0||state.victory||state.defeat||!state.war)return "Requires an active war";
+  if(index>=state.units.size())return "Select a formation";
+  const auto& u=state.units[index];if(u.owner!=state.player||!ready(u))return "Requires a deployed friendly formation";
+  if(!std::isfinite(target.x)||!std::isfinite(target.y)||std::abs(target.y)>90)return "Invalid target";
+  int r=regionAt(target);if(r<0||state.regions[r].owner!=state.enemy)return "Target hostile controlled land";
+  double d=distanceKm(u.position,target);
+  for(const auto& w:unitWeapons(u))if((w.id=="ground_missile"||w.id=="cruise"||w.id=="howitzer")&&d>=w.minRangeKm&&d<=w.maxRangeKm){int n=weaponSlot(u.type,w.id);if(n>=0&&(n>=int(u.weaponAmmo.size())||(u.weaponAmmo[n]>0&&u.weaponCooldowns[n]<=0&&u.weaponReloads[n]<=0)))return state.engagements.size()<4096?"":"Projectile capacity reached";return "Weapon reloading or ammunition exhausted";}
+  return "No point-strike weapon in range";
+}
+bool Simulation::orderUnitAttackAt(size_t index,Point target){
+  if(!unitAttackReason(index,target).empty())return false;
+  auto& u=state.units[index];double d=distanceKm(u.position,target);
+  for(const auto& w:unitWeapons(u))if((w.id=="ground_missile"||w.id=="cruise"||w.id=="howitzer")&&d>=w.minRangeKm&&d<=w.maxRangeKm){
+    auto slots=baseWeapons(u.type);size_t old=u.weaponAmmo.size();u.weaponAmmo.resize(slots.size());u.weaponReserve.resize(slots.size());u.weaponCooldowns.resize(slots.size());u.weaponReloads.resize(slots.size());for(size_t n=old;n<slots.size();++n){u.weaponAmmo[n]=slots[n].magazine;u.weaponReserve[n]=slots[n].reserveAmmo;}
+    int n=weaponSlot(u.type,w.id);--u.weaponAmmo[n];u.weaponCooldowns[n]=w.cooldownSeconds;
+    Engagement shot;shot.origin=u.position;shot.target=target;shot.attacker=int(index);shot.owner=u.owner;shot.weaponId=w.id;shot.targetMask=1;shot.areaStrike=true;shot.ballistic=w.id=="ground_missile";shot.damage=w.damage*(.35+.65*u.health/100);shot.impactRadiusKm=w.id=="howitzer"?4:6;shot.total=shot.remaining=std::max(2.0,d/w.projectileSpeedKmPerSecond);state.engagements.push_back(shot);log(w.name+" point strike launched");return true;
+  }
+  return false;
+}
+
 void Simulation::combat(){
-  if(!state.war){state.engagements.clear();return;}
+  for(auto& site:state.sites)site.missileCooldown=std::max(0.0,site.missileCooldown-simulationTickSeconds);
+  if(!state.war&&state.engagements.empty())return;
   // Defenders react to actual incursions; orders never create damage remotely.
-  for(auto& defender:state.units)if(defender.owner==state.enemy&&ready(defender)&&occupying(defender.type)){
+  for(auto& defender:state.units)if(state.war&&defender.owner==state.enemy&&ready(defender)&&occupying(defender.type)){
     Point destination=defender.position;
     double best=std::numeric_limits<double>::max();
     bool response=false,settlementObjective=false;
@@ -80,7 +127,7 @@ void Simulation::combat(){
     }else{defender.moving=false;defender.path.clear();defender.waypoints.clear();}
   }
   // Naval defenders protect home coast water only; they never pursue cities.
-  for(auto& defender:state.units)if(defender.owner==state.enemy&&ready(defender)&&navalUnit(defender.type)){
+  for(auto& defender:state.units)if(state.war&&defender.owner==state.enemy&&ready(defender)&&navalUnit(defender.type)){
     const Unit* threat=nullptr;double best=std::numeric_limits<double>::max();
     for(const auto& attacker:state.units)if(attacker.owner==state.player&&ready(attacker)&&navalUnit(attacker.type)&&engagementRange(defender,attacker)>0){
       bool homeWater=false;for(const auto& region:state.regions)if(region.nation==state.enemy&&distanceKm(region.center,attacker.position)<180){homeWater=true;break;}
@@ -91,18 +138,26 @@ void Simulation::combat(){
   }
   std::vector<double> damage(state.units.size(),0);
   for(auto& shot:state.engagements){
+    if(shot.impactSeconds>0){shot.impactSeconds=std::max(0.0,shot.impactSeconds-simulationTickSeconds);continue;}
+    if(shot.remaining<=0)continue;
     if(shot.guided&&shot.defender>=0&&shot.defender<int(state.units.size())&&ready(state.units[shot.defender]))shot.target=state.units[shot.defender].position;
     shot.remaining-=simulationTickSeconds;
+    if(shot.remaining<=0&&shot.areaStrike){
+      for(size_t n=0;n<state.units.size();++n){const auto& u=state.units[n];if(ready(u)&&(shot.nuclear||u.owner!=shot.owner)&&(shot.targetMask&unsigned(targetDomain(u.type)))&&distanceKm(u.position,shot.target)<=shot.impactRadiusKm)damage[n]+=shot.damage*(1-unitProtection(u));}
+      for(auto& site:state.sites)if(!site.destroyed&&site.region>=0&&site.region<int(state.regions.size())&&(shot.nuclear||state.regions[site.region].owner!=shot.owner)&&distanceKm(site.position,shot.target)<=shot.impactRadiusKm){site.destroyed=true;site.enabled=false;}
+      if(shot.nuclear){state.stability=std::max(0.0,state.stability-25);log("Nuclear detonation: formations and infrastructure in the blast area destroyed");}else log("Conventional strike impacted");
+    }
     if(shot.remaining<=0&&shot.defender>=0&&shot.defender<int(state.units.size())){
       const auto& target=state.units[shot.defender];
       if(ready(target)&&(shot.targetMask&unsigned(targetDomain(target.type)))&&distanceKm(target.position,shot.target)<=shot.impactRadiusKm+unitSpeedKmPerSecond(target)*simulationTickSeconds)damage[shot.defender]+=shot.damage*(1-unitProtection(target));
     }
+    if(shot.remaining<=0&&shot.damage>0)shot.impactSeconds=shot.nuclear?3.0:1.5;
   }
-  state.engagements.erase(std::remove_if(state.engagements.begin(),state.engagements.end(),[](const Engagement& shot){return shot.remaining<=0;}),state.engagements.end());
+  state.engagements.erase(std::remove_if(state.engagements.begin(),state.engagements.end(),[](const Engagement& shot){return shot.remaining<=0&&shot.impactSeconds<=0;}),state.engagements.end());
   // Each mount chooses one eligible target and consumes its own ammunition.
   // Every launch is selected before damage is applied, preserving mutual fire.
   for(size_t a=0;a<state.units.size();++a){
-    auto& ua=state.units[a];if(!ready(ua))continue;
+    auto& ua=state.units[a];if(!state.war||!ready(ua))continue;
     const auto weapons=unitWeapons(ua);auto slots=baseWeapons(ua.type);
     for(const auto& weapon:weapons)if(weaponSlot(ua.type,weapon.id)>=int(slots.size()))slots.push_back(weapon);
     size_t old=ua.weaponAmmo.size();
@@ -132,7 +187,7 @@ void Simulation::combat(){
         if(state.engagements.size()<4096)state.engagements.push_back(trace);
       }
       else {
-        Engagement shot;shot.origin=ua.position;shot.target=state.units[target].position;shot.attacker=int(a);shot.defender=target;shot.weaponId=weapon.id;shot.targetMask=weapon.targetMask;shot.damage=hit;shot.total=shot.remaining=std::max(simulationTickSeconds,nearest/weapon.projectileSpeedKmPerSecond);shot.impactRadiusKm=weapon.impactRadiusKm;shot.guided=weapon.id=="atgm"||weapon.id=="anti_ship"||weapon.id=="asw_torpedo"||weapon.id=="sub_torpedo"||weapon.id=="cruise"||weapon.id=="ground_missile";
+        Engagement shot;shot.origin=ua.position;shot.target=state.units[target].position;shot.attacker=int(a);shot.defender=target;shot.weaponId=weapon.id;shot.targetMask=weapon.targetMask;shot.owner=ua.owner;shot.ballistic=weapon.id=="ground_missile";shot.damage=hit;shot.total=shot.remaining=std::max(simulationTickSeconds,nearest/weapon.projectileSpeedKmPerSecond);shot.impactRadiusKm=weapon.impactRadiusKm;shot.guided=weapon.id=="atgm"||weapon.id=="anti_ship"||weapon.id=="asw_torpedo"||weapon.id=="sub_torpedo"||weapon.id=="cruise"||weapon.id=="ground_missile";
         if(state.engagements.size()<4096)state.engagements.push_back(shot);
       }
     }
@@ -142,6 +197,7 @@ void Simulation::combat(){
     if(previous>0&&u.health<=0)log(std::string(u.owner==state.player?"Formation lost: ":"Enemy formation destroyed: ")+unitNames[int(u.type)]);
     if(u.health<=0){u.moving=false;u.path.clear();u.waypoints.clear();u.pendingDestinations.clear();}
   }
+  if(!state.war)return;
   for(size_t cityIndex=0;cityIndex<state.settlements.size();++cityIndex){
     auto& city=state.settlements[cityIndex];
     double player=0,enemy=0;

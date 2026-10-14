@@ -24,14 +24,14 @@ double distanceKm(Point a,Point b) {
 UnitStats unitStats(UnitType type) {
   // Strategic map speeds deliberately compress travel; weapon ranges stay local.
   switch(type){
-    case UnitType::Infantry:return {.65,3,1.3};
-    case UnitType::Armour:return {1,5,1.8};
-    case UnitType::Artillery:return {.55,30,1.0};
+    case UnitType::Infantry:return {.65,18,1.3};
+    case UnitType::Armour:return {1,28,1.8};
+    case UnitType::Artillery:return {.55,90,1.0};
     case UnitType::Destroyer:return {.85,160,1.1};
     case UnitType::Submarine:return {.65,220,.9};
     case UnitType::Fighter:case UnitType::Bomber:return {0,0,0};
-    case UnitType::SpecialForces:return {.8,2,1.2};
-    case UnitType::MissileLauncher:return {.6,120,1.2};
+    case UnitType::SpecialForces:return {.8,12,1.2};
+    case UnitType::MissileLauncher:return {.6,600,1.2};
     case UnitType::Count:break;
   }
   return {0,0,0};
@@ -48,11 +48,11 @@ std::vector<WeaponProfile> baseWeapons(UnitType t){
   };
   constexpr unsigned ground=unsigned(TargetDomain::Ground),naval=unsigned(TargetDomain::Naval),sub=unsigned(TargetDomain::Submerged);
   switch(t){
-    case UnitType::Infantry:return {weapon("rifle","Rifles",ground,0,3,.325,.25,120,2400,3,0,"Direct fire")};
-    case UnitType::Armour:return {weapon("tank_gun","Tank gun",ground,0,5,7.2,4,24,120,8,8,"Direct fire"),weapon("machine_gun","Machine gun",ground,0,2,.3,1,120,1200,4,0,"Direct fire")};
-    case UnitType::Artillery:return {weapon("howitzer","Indirect artillery",ground,4,30,8,8,12,120,12,4,"Indirect fire")};
-    case UnitType::SpecialForces:return {weapon("carbine","Carbines",ground,0,2,.3,.25,120,2400,3,0,"Direct fire")};
-    case UnitType::MissileLauncher:return {weapon("ground_missile","Tactical missiles",ground,12,120,12,10,4,24,20,12,"Guided missile")};
+    case UnitType::Infantry:return {weapon("rifle","Rifles",ground,0,18,.325,.25,120,2400,3,0,"Direct fire")};
+    case UnitType::Armour:return {weapon("tank_gun","Tank gun",ground,0,28,7.2,4,24,120,8,8,"Direct fire"),weapon("machine_gun","Machine gun",ground,0,12,.3,1,120,1200,4,0,"Direct fire")};
+    case UnitType::Artillery:return {weapon("howitzer","Indirect artillery",ground,4,90,8,8,12,120,12,4,"Indirect fire")};
+    case UnitType::SpecialForces:return {weapon("carbine","Carbines",ground,0,12,.3,.25,120,2400,3,0,"Direct fire")};
+    case UnitType::MissileLauncher:return {weapon("ground_missile","Tactical missiles",ground,12,600,22,24,4,24,20,12,"Guided missile")};
     case UnitType::Destroyer:return {weapon("naval_gun","Coastal gun",ground|naval,0,24,4,4,30,300,10,8,"Direct coastal fire"),weapon("anti_ship","Anti-ship missiles",naval,8,160,12,12,4,20,24,16,"Guided anti-ship missile"),weapon("asw_torpedo","ASW torpedoes",sub,0,32,10,12,4,20,20,1.5,"Anti-submarine torpedo")};
     case UnitType::Submarine:return {weapon("sub_torpedo","Torpedoes",naval|sub,0,40,12,14,4,20,24,1.5,"Submerged torpedo"),weapon("cruise","Cruise missiles",ground,18,220,10,16,4,16,28,14,"Land attack cruise missile")};
     default:return {};
@@ -87,7 +87,7 @@ std::vector<WeaponProfile> Simulation::unitWeapons(const Unit& u) const {
   if(u.owner!=state.player){weapons.erase(std::remove_if(weapons.begin(),weapons.end(),[](const WeaponProfile& w){return w.id=="anti_ship"||w.id=="cruise";}),weapons.end());return weapons;}
   weapons.erase(std::remove_if(weapons.begin(),weapons.end(),[&](const WeaponProfile& w){return (w.id=="asw_torpedo"&&!hasTech(116))||(w.id=="anti_ship"&&!hasTech(117))||(w.id=="cruise"&&!hasTech(119));}),weapons.end());
   if(u.type==UnitType::Infantry&&hasTech(18)){
-    WeaponProfile at;at.id="atgm";at.name="Anti-tank guided missiles";at.behaviour="Guided anti-armour missile";at.targetMask=unsigned(TargetDomain::Ground);at.armourOnly=true;at.minRangeKm=.5;at.maxRangeKm=7;at.damage=7.8;at.cooldownSeconds=20;at.magazine=4;at.reserveAmmo=24;at.reloadSeconds=20;at.projectileSpeedKmPerSecond=5;weapons.push_back(at);
+    WeaponProfile at;at.id="atgm";at.name="Anti-tank guided missiles";at.behaviour="Guided anti-armour missile";at.targetMask=unsigned(TargetDomain::Ground);at.armourOnly=true;at.minRangeKm=.5;at.maxRangeKm=40;at.damage=7.8;at.cooldownSeconds=20;at.magazine=4;at.reserveAmmo=24;at.reloadSeconds=20;at.projectileSpeedKmPerSecond=5;weapons.push_back(at);
   }
   for(auto& w:weapons){
     if(groundUnit(u.type)){
@@ -178,6 +178,7 @@ std::vector<Capability> Simulation::siteCapabilities(size_t index) const {
   if(site.type==Facility::Shipyard){if(hasTech(113))result.push_back({"Manufacture","Destroyer","factory",active});if(hasTech(114))result.push_back({"Manufacture","Submarine","factory",active});}
   bool laboratory=false;for(const auto& lab:state.sites)if(lab.type==Facility::Laboratory&&!lab.destroyed&&lab.enabled&&lab.remaining<=0&&lab.region>=0&&lab.region<int(state.regions.size())&&state.regions[lab.region].owner==state.player)laboratory=true;
   if(site.type==Facility::Factory&&hasTech(59)&&hasTech(87))result.push_back({"Strategic manufacture","Warheads; requires an operational research centre","factory",active&&laboratory});
+  if(site.type==Facility::Silo&&hasTech(58))result.push_back({"Ballistic delivery",std::to_string(int(siteMissileRange(index)))+" km; conventional ground strike; 45s reload","weapon",active});
   if(site.type==Facility::Silo&&hasTech(60))result.push_back({"Nuclear delivery","Strategic warhead release during war","weapon",active});
   result.push_back({"Operation",active?"Operational":site.remaining>0?"Under construction":"Inactive","building",active});
   return result;

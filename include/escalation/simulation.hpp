@@ -37,8 +37,9 @@ namespace escalation {
     int attacker=-1,defender=-1;
     std::string weaponId;
     unsigned targetMask=0;
-    double damage=0,remaining=0,total=0,impactRadiusKm=2;
-    bool guided=false;
+    double damage=0,remaining=0,total=0,impactRadiusKm=2,impactSeconds=0;
+    bool guided=false,ballistic=false,nuclear=false,areaStrike=false;
+    int owner=-1,sourceSite=-1;
   };
   struct Unit {
     int owner=-1,region=0,target=-1,sourceSite=-1;
@@ -87,6 +88,7 @@ namespace escalation {
     bool enabled=true;
     Point position;
     bool destroyed=false;
+    double missileCooldown=0;
   };
   struct Route {
     int a=0,b=0;
@@ -214,6 +216,11 @@ namespace escalation {
     bool attack(int region);
     bool produceWarhead();
     bool launchNuclear(int region);
+    double siteMissileRange(size_t index) const;
+    std::string missileStrikeReason(size_t index,Point target,bool nuclear=false) const;
+    bool launchMissile(size_t index,Point target,bool nuclear=false);
+    std::string unitAttackReason(size_t index,Point target) const;
+    bool orderUnitAttackAt(size_t index,Point target);
     void save(const std::string& path) const;
     void load(const std::string& path);
   };

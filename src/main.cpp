@@ -120,6 +120,7 @@ struct App {
   Panel panel=None;
   int selectedNation=-1,selectedRegion=-1,selectedSite=-1,selectedSettlement=-1,selectedWorldCity=-1,selectedUnit=-1,construction=-1,readyUnitPlacement=-1,focus=5,speed=1;
   bool paused=true,regionOpen=false,unitOpen=false,nationOpen=false,commandMode=false,showRanges=true,autoResearch=false,leftStarted=false,rightDragged=false,treeFocus=false;
+  int attackMode=0; // 1: unit point attack, 2: conventional silo, 3: confirmed nuclear silo
   double accumulator=0;
   Point pointer,leftStart,popup;
   int hoverUnit=-1,hoverSite=-1;
@@ -158,6 +159,7 @@ struct App {
   }
   void clearSelection(){
     selectedRegion=selectedSite=selectedSettlement=selectedWorldCity=selectedUnit=construction=readyUnitPlacement=-1;
+    attackMode=0;
     selectedUnits.clear();
     for(auto& group:controlGroups)group.clear();
     orderPreviews.clear();
@@ -234,7 +236,7 @@ struct App {
     notice("Select units or land. Construction [B], research [R], Space resumes.");
   }
   void toggle(Panel wanted){
-    cancelGestures();construction=readyUnitPlacement=-1;commandMode=false;
+    cancelGestures();construction=readyUnitPlacement=-1;commandMode=false;attackMode=0;
     panel=panel==wanted?None:wanted;
     if(panel==Research)treeFocus=true;
   }
@@ -249,6 +251,14 @@ struct App {
       return;
     }
     if(screen!=Game)return;
+    if(attackMode){
+      bool issued=false;std::string reason;
+      if(attackMode==1){for(int id:selectedUnits){reason=sim.unitAttackReason(size_t(id),geo);issued=sim.orderUnitAttackAt(size_t(id),geo)||issued;}}
+      else if(selectedSite>=0){reason=sim.missileStrikeReason(size_t(selectedSite),geo,attackMode==3);issued=sim.launchMissile(size_t(selectedSite),geo,attackMode==3);}
+      notice(issued?"Strike launched":reason.empty()?"Select a ready launcher first":reason);
+      if(issued)attackMode=0;
+      return;
+    }
     if(readyUnitPlacement>=0){
       auto type=UnitType(readyUnitPlacement);
       auto reason=sim.deploymentReason(type,geo);
@@ -394,7 +404,7 @@ struct App {
     }
     if(ImGui::IsKeyPressed(ImGuiKey_Escape)&&screen==Game&&windowFocused&&(pauseOpen||!popupOpen)){
       if(pauseOpen){pauseOpen=false;paused=wasPaused;saveSettings();}
-      else if(construction>=0||readyUnitPlacement>=0||commandMode){construction=readyUnitPlacement=-1;commandMode=false;}
+      else if(construction>=0||readyUnitPlacement>=0||commandMode||attackMode){construction=readyUnitPlacement=-1;commandMode=false;attackMode=0;}
       else if(panel!=None){panel=None;cancelGestures();}
       else openPause();
     }
@@ -420,15 +430,20 @@ struct App {
       if(ImGui::IsMouseClicked(ImGuiMouseButton_Right)){rightDragged=false;rightStarted=true;rightGesture.begin(pointer);panButton=ImGuiMouseButton_Right;}
       if(ImGui::IsMouseClicked(ImGuiMouseButton_Middle))panButton=ImGuiMouseButton_Middle;
       if(rightStarted&&ImGui::IsMouseReleased(ImGuiMouseButton_Right)&&!rightDragged){
-        if(construction>=0||readyUnitPlacement>=0){
-          construction=readyUnitPlacement=-1;
+        if(construction>=0||readyUnitPlacement>=0||attackMode){
+          construction=readyUnitPlacement=-1;attackMode=0;
           notice("Construction placement cancelled");
         }
         else if(screen==Game&&!selectedUnits.empty()){
           auto geo=camera.unproject(pointer);
           if(geo){
             bool issued=false;
-            for(int id:selectedUnits)issued=sim.orderUnitAt(id,*geo,io.KeyShift)||issued;
+            int targetRegion=sim.regionAt(*geo);
+            bool hostileLand=targetRegion>=0&&sim.state.regions[targetRegion].owner==sim.state.enemy;
+            for(int id:selectedUnits){
+              bool strike=hostileLand&&!io.KeyShift&&sim.unitAttackReason(size_t(id),*geo).empty();
+              issued=(strike?sim.orderUnitAttackAt(size_t(id),*geo):sim.orderUnitAt(size_t(id),*geo,io.KeyShift))||issued;
+            }
             notice(issued?(io.KeyShift?"Orders queued":"Orders issued"):"Order blocked: check access, readiness and war status");
           }
         }
@@ -446,7 +461,7 @@ struct App {
     if(leftStarted&&ImGui::IsMouseReleased(ImGuiMouseButton_Left)){
       leftStarted=false;
       bool dragged=leftGesture.dragged(8);
-      if(dragged&&screen==Game&&construction<0&&readyUnitPlacement<0&&mapInput){
+      if(dragged&&screen==Game&&construction<0&&readyUnitPlacement<0&&attackMode==0&&mapInput){
         if(!io.KeyShift)selectedUnits.clear();
         for(size_t i=0;i<sim.state.units.size();++i){
           auto& u=sim.state.units[i];
@@ -735,6 +750,20 @@ int main(int argc,char** argv){
         }
       }
       if(smoke&&frame==32){app.clearSelection();app.panel=App::Research;app.focus=8;app.treeFocus=true;}
+      if(smoke&&frame==34){
+        app.clearSelection();app.panel=App::None;app.camera.globe=false;app.sim.state.completed[58]=true;app.sim.state.war=true;
+        int source=app.sim.state.capital;Site silo;silo.type=Facility::Silo;silo.region=source;silo.position=app.sim.state.regions[source].center;app.sim.state.sites.push_back(silo);
+        app.selectedSite=int(app.sim.state.sites.size())-1;
+        for(const auto& city:app.sim.state.settlements)if(city.owner==app.sim.state.enemy){
+          if(app.sim.launchMissile(size_t(app.selectedSite),city.position)){
+            app.center({(silo.position.x+city.position.x)*.5,(silo.position.y+city.position.y)*.5});app.camera.zoom=12;
+            double flight=app.sim.state.engagements.back().total;for(int tick=0;tick<int(flight*.35/.25);++tick)app.sim.tick();break;
+          }
+        }
+      }
+      if(smoke&&frame==36){
+        for(int tick=0;tick<500;++tick){bool hit=false;Point impact{};for(const auto& shot:app.sim.state.engagements)if(shot.ballistic&&shot.sourceSite==app.selectedSite&&shot.impactSeconds>0){hit=true;impact=shot.target;break;}if(hit){app.center(impact);app.camera.zoom=45;break;}app.sim.tick();}
+      }
       app.windowFocused=smoke||glfwGetWindowAttrib(window,GLFW_FOCUSED);
       app.frame(float(w),float(h),smoke?0.016:dt);
       ImGui::Render();
@@ -746,7 +775,7 @@ int main(int argc,char** argv){
         if(gl::GetError()!=0)throw std::runtime_error("OpenGL error during smoke render");
       }
       if(!smoke)glfwSwapBuffers(window);
-      if(smoke&&++frame>=34)break;
+      if(smoke&&++frame>=38)break;
     }
     if(!smoke&&app.sim.state.player>=0)app.save(true);
     app.saveSettings();

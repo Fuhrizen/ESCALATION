@@ -307,8 +307,11 @@ int main(){try{
   for(int n=0;n<10000&&arsenal.state.buildingInventory[int(Facility::Silo)]==0;++n)arsenal.tick();
   check(arsenal.build(arsenal.state.capital,Facility::Silo),"ready missile site placed");
   check(arsenal.launchNuclear(24),"nuclear delivery permitted once ready");
-  check(arsenal.state.defeat&&arsenal.state.nuclearUsed&&!arsenal.state.war&&arsenal.state.stability<50,"scripted second strike ends campaign");
-  check(!arsenal.launchNuclear(24)&&!arsenal.produceWarhead(),"ended campaign rejects nuclear orders");
+  check(!arsenal.state.defeat&&arsenal.state.nuclearUsed&&arsenal.state.war&&!arsenal.state.engagements.empty(),"nuclear release creates a flying ballistic strike without scripted defeat");
+  arsenal.save(save);Simulation missileFlight(w);missileFlight.load(save);check(missileFlight.state.engagements.back().nuclear&&missileFlight.state.engagements.back().ballistic&&missileFlight.state.engagements.back().sourceSite>=0,"ballistic strike and source site survive save round trip");
+  for(int n=0;n<1000&&!arsenal.state.engagements.empty();++n)arsenal.tick();
+  check(arsenal.state.stability<100&&!arsenal.state.defeat,"nuclear consequences apply at projectile arrival");
+  check(!arsenal.launchNuclear(24),"nuclear orders reject an empty warhead stockpile");
   std::filesystem::remove(save);std::filesystem::remove(save+".bak");
   std::cout<<"Passed "<<checks<<" checks\n";return 0;
 }catch(const std::exception& e){std::cerr<<"FAIL after "<<checks<<" checks: "<<e.what()<<"\n";return 1;}}

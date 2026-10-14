@@ -287,8 +287,45 @@
         unitSymbol(draw,p,unit.type,color,selected||hovered,unit.owner!=s.player);
         for(int pip=0;pip<3;++pip){ImVec2 dot{float(p.x)+(pip-1)*6,float(p.y)-15};draw->AddCircleFilled(dot,2.4f,unit.health>pip*100.0/3?color:IM_COL32(33,48,67,230),12);draw->AddCircle(dot,2.4f,IM_COL32(6,16,30,230),12,1); }
       }
-      // Runtime engagements snapshot each actual fired shot and finite travel time.
-      for(const auto& shot:s.engagements){double progress=std::clamp(1-shot.remaining/std::max(.001,shot.total),0.0,1.0);Point moving{std::remainder(shot.origin.x+std::remainder(shot.target.x-shot.origin.x,360.0)*progress,360.0),shot.origin.y+(shot.target.y-shot.origin.y)*progress};bool visible=false;auto p=camera.project(moving,&visible);if(!visible)continue;ImU32 color=shot.targetMask&4?IM_COL32(104,229,207,235):IM_COL32(255,219,149,235);geographicLine(draw,{shot.origin,moving},IM_COL32(245,208,139,105),1.2f,false,false);if(shot.guided){Point prior{std::remainder(shot.origin.x+std::remainder(shot.target.x-shot.origin.x,360.0)*std::max(0.0,progress-.02),360.0),shot.origin.y+(shot.target.y-shot.origin.y)*std::max(0.0,progress-.02)};auto q=camera.project(prior);double length=std::hypot(p.x-q.x,p.y-q.y);float dx=length>.01?float((p.x-q.x)/length):1,dy=length>.01?float((p.y-q.y)/length):0;draw->AddTriangleFilled({float(p.x)+dx*4,float(p.y)+dy*4},{float(p.x)-dx*3-dy*2,float(p.y)-dy*3+dx*2},{float(p.x)-dx*3+dy*2,float(p.y)-dy*3-dx*2},color);}else draw->AddCircleFilled(vec(p),2.f,color,12);}
+      // Every trail, launch flash and impact below comes from a fired runtime
+      // engagement. Strategic strikes have no formation defender or attacker.
+      for(const auto& shot:s.engagements){
+        int owner=shot.owner;if(owner<0&&shot.attacker>=0&&shot.attacker<int(s.units.size()))owner=s.units[shot.attacker].owner;
+        ImU32 tint=controllingColor(owner==s.player,240);
+        if(shot.impactSeconds>0){
+          if(shot.damage<=0)continue; // Immediate-fire visual records must not invent explosions.
+          bool visible=false;Point p=camera.project(shot.target,&visible);if(!visible)continue;
+          double life=shot.nuclear?3.0:1.5,phase=std::clamp(1-shot.impactSeconds/life,0.0,1.0);
+          float radius=float((shot.nuclear?18:6)+(shot.nuclear?70:26)*phase),fade=float(1-phase);
+          geographicalRing(draw,shot.target,std::max(.15,shot.impactRadiusKm*(.15+.85*phase)),controllingColor(owner==s.player,int(180*fade)));
+          draw->AddCircleFilled(vec(p),radius,IM_COL32(255,183,87,int(85*fade)),48);
+          draw->AddCircle(vec(p),radius,IM_COL32(255,216,133,int(230*fade)),48,shot.nuclear?3.f:1.6f);
+          draw->AddCircleFilled(vec(p),std::max(2.f,radius*(1-float(phase))*.45f),IM_COL32(255,246,210,int(240*fade)),32);
+          continue;
+        }
+        double progress=std::clamp(1-shot.remaining/std::max(.001,shot.total),0.0,1.0);
+        auto location=[&](double t){return Point{std::remainder(shot.origin.x+std::remainder(shot.target.x-shot.origin.x,360.0)*t,360.0),shot.origin.y+(shot.target.y-shot.origin.y)*t};};
+        double period=camera.width*camera.zoom;
+        Point start=camera.project(shot.origin),finish=camera.project(shot.target);if(!camera.globe)finish.x=start.x+std::remainder(finish.x-start.x,period);
+        double arc=shot.ballistic?std::clamp(std::hypot(finish.x-start.x,finish.y-start.y)*.2,24.0,180.0):0;
+        auto flight=[&](double t,bool* visible=nullptr){Point p=camera.project(location(t),visible);p.y-=arc*4*t*(1-t);return p;};
+        // Project all samples on the visible hemisphere. A ballistic screen arc
+        // communicates ascent/descent without shifting its geographic endpoint.
+        const int steps=std::max(2,int(std::ceil(progress*80)));
+        for(int n=0;n<steps;++n){double t=progress*n/steps,u=progress*(n+1)/steps;bool va=false,vb=false;Point a=flight(t,&va),b=flight(u,&vb);if(!va&&!vb)continue;
+          if(va!=vb){double lo=t,hi=u;for(int k=0;k<24;++k){double mid=(lo+hi)*.5;bool vm=false;flight(mid,&vm);if(vm==va)lo=mid;else hi=mid;}if(va)b=flight((lo+hi)*.5);else a=flight((lo+hi)*.5);}
+          if(!camera.globe)b.x=a.x+std::remainder(b.x-a.x,period);
+          ImU32 trail=shot.ballistic?controllingColor(owner==s.player,210):IM_COL32(245,208,139,120);
+          for(int copy=camera.globe?0:-1;copy<=(camera.globe?0:1);++copy){float shift=float(copy*period);draw->AddLine({float(a.x)+shift,float(a.y)},{float(b.x)+shift,float(b.y)},IM_COL32(5,17,24,140),shot.ballistic?4.f:2.f);draw->AddLine({float(a.x)+shift,float(a.y)},{float(b.x)+shift,float(b.y)},trail,shot.ballistic?2.f:1.2f);}
+        }
+        if(progress<.12){bool visible=false;Point p=camera.project(shot.origin,&visible);if(visible){float fade=float(1-progress/.12),r=4+9*(1-fade);draw->AddCircleFilled(vec(p),r,IM_COL32(255,184,89,int(110*fade)),24);draw->AddCircleFilled(vec(p),3,IM_COL32(255,239,170,int(235*fade)),16);}}
+        bool visible=false;Point p=flight(progress,&visible);if(!visible)continue;
+        ImU32 projectile=shot.nuclear?IM_COL32(255,232,171,255):shot.targetMask&4?IM_COL32(104,229,207,235):IM_COL32(255,219,149,250);
+        if(shot.guided||shot.ballistic){Point prior=flight(std::max(0.0,progress-.005));if(!camera.globe)prior.x=p.x+std::remainder(prior.x-p.x,period);double length=std::hypot(p.x-prior.x,p.y-prior.y);float dx=length>.01?float((p.x-prior.x)/length):1,dy=length>.01?float((p.y-prior.y)/length):0;float size=shot.ballistic?6.f:4.f;
+          draw->AddTriangleFilled({float(p.x)+dx*size,float(p.y)+dy*size},{float(p.x)-dx*size-dy*size*.5f,float(p.y)-dy*size+dx*size*.5f},{float(p.x)-dx*size+dy*size*.5f,float(p.y)-dy*size-dx*size*.5f},projectile);
+          draw->AddCircleFilled({float(p.x)-dx*size,float(p.y)-dy*size},shot.ballistic?2.4f:1.5f,IM_COL32(255,152,79,230),12);
+        }else draw->AddCircleFilled(vec(p),2.f,projectile,12);
+      }
       if(readyUnitPlacement>=0&&readyUnitPlacement<int(UnitType::Count)&&activeUnit(UnitType(readyUnitPlacement))&&!ImGui::GetIO().WantCaptureMouse){
         const auto type=UnitType(readyUnitPlacement);auto geo=camera.unproject(pointer);
         std::string reason=geo?sim.deploymentReason(type,*geo):(navalUnit(type)?"Choose visible water near a friendly shipyard":"Choose visible controlled land");
