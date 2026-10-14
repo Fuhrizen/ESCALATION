@@ -18,6 +18,8 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <map>
+#include <functional>
 #ifndef ESCALATION_DATA_DIR
 #define ESCALATION_DATA_DIR "data"
 #endif
@@ -127,6 +129,8 @@ struct App {
   bool rightStarted=false;
   MapGesture leftGesture,rightGesture;
   std::vector<int> selectedUnits;
+  std::array<std::vector<int>,10> controlGroups;
+  bool autoUiScale=true,leftDoubleClick=false;
   std::string message;
   std::filesystem::path saves;
   explicit App(World w,std::filesystem::path p):world(std::move(w)),sim(world),saves(std::move(p)){
@@ -137,12 +141,12 @@ struct App {
       auto value=[&](const char* key,float fallback){return j.contains(key)&&j.get(key).is<double>()?float(j.get(key).get<double>()):fallback;};
       panSpeed=std::clamp(value("panSpeed",panSpeed),.5f,5.f);dragSpeed=std::clamp(value("dragSpeed",dragSpeed),.5f,3.f);zoomSensitivity=std::clamp(value("zoomSensitivity",zoomSensitivity),.5f,3.f);uiScale=std::clamp(value("uiScale",uiScale),.85f,1.4f);
       auto boolean=[&](const char* key,bool fallback){return j.contains(key)&&j.get(key).is<bool>()?j.get(key).get<bool>():fallback;};
-      showRanges=boolean("showRanges",true);showCities=boolean("showCities",true);showRoads=boolean("showRoads",true);showBorders=boolean("showBorders",true);showRivers=boolean("showRivers",true);showPressure=boolean("showPressure",true);camera.terrain=boolean("terrain",true);camera.globe=boolean("globe",true);
+      autoUiScale=boolean("autoUiScale",!j.contains("uiScale"));showRanges=boolean("showRanges",true);showCities=boolean("showCities",true);showRoads=boolean("showRoads",true);showBorders=boolean("showBorders",true);showRivers=boolean("showRivers",true);showPressure=boolean("showPressure",true);camera.terrain=boolean("terrain",true);camera.globe=boolean("globe",true);
     }catch(const std::exception&){}
   }
   void saveSettings(){
     try{std::filesystem::create_directories(saves);Object j;
-      j["panSpeed"]=num(panSpeed);j["dragSpeed"]=num(dragSpeed);j["zoomSensitivity"]=num(zoomSensitivity);j["uiScale"]=num(uiScale);
+      j["panSpeed"]=num(panSpeed);j["dragSpeed"]=num(dragSpeed);j["zoomSensitivity"]=num(zoomSensitivity);j["uiScale"]=num(uiScale);j["autoUiScale"]=Json(autoUiScale);
       j["showRanges"]=Json(showRanges);j["showCities"]=Json(showCities);j["showRoads"]=Json(showRoads);j["showBorders"]=Json(showBorders);j["showRivers"]=Json(showRivers);j["showPressure"]=Json(showPressure);j["terrain"]=Json(camera.terrain);j["globe"]=Json(camera.globe);
       std::ofstream f(saves/"settings.json");f<<Json(j).serialize(true);
     }catch(const std::exception& e){notice(e.what());}
@@ -155,6 +159,8 @@ struct App {
   void clearSelection(){
     selectedRegion=selectedSite=selectedUnit=construction=-1;
     selectedUnits.clear();
+    for(auto& group:controlGroups)group.clear();
+    orderPreviews.clear();
     regionOpen=unitOpen=nationOpen=commandMode=leftStarted=rightStarted=rightDragged=false;
     cancelGestures();
   }
@@ -253,7 +259,7 @@ struct App {
     }
     if(commandMode&&!selectedUnits.empty()){
       bool issued=false;
-      for(int id:selectedUnits)issued=sim.orderUnitAt(size_t(id),geo)||issued;
+      for(int id:selectedUnits)issued=sim.orderUnitAt(size_t(id),geo,ImGui::GetIO().KeyShift)||issued;
       notice(issued?"Movement / attack order issued":"Order unavailable: check war status, land access and unit readiness");
       commandMode=false;
       return;
@@ -276,6 +282,10 @@ struct App {
       auto found=std::find(selectedUnits.begin(),selectedUnits.end(),selectedUnit);
       if(ImGui::GetIO().KeyShift&&found!=selectedUnits.end()){selectedUnits.erase(found);selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();}
       else if(sim.state.units[selectedUnit].owner==sim.state.player)selectedUnits.push_back(selectedUnit);
+      if(selectedUnit>=0&&leftDoubleClick&&sim.state.units[selectedUnit].owner==sim.state.player){
+        auto type=sim.state.units[selectedUnit].type;
+        for(size_t i=0;i<sim.state.units.size();++i){const auto& u=sim.state.units[i];bool visible=false;auto p=camera.project(u.position,&visible);if(u.owner==sim.state.player&&u.type==type&&u.health>0&&u.remaining<=0&&visible&&p.x>=camera.x&&p.x<camera.x+camera.width&&p.y>=camera.y&&p.y<camera.y+camera.height&&std::find(selectedUnits.begin(),selectedUnits.end(),int(i))==selectedUnits.end())selectedUnits.push_back(int(i));}
+      }
       selectedSite=-1;selectedRegion=-1;
       unitOpen=selectedUnit>=0;
       regionOpen=false;
@@ -309,6 +319,19 @@ struct App {
     double t=std::clamp(accumulator/0.25,0.0,1.0);
     return {std::remainder(old.x+std::remainder(position.x-old.x,360.0)*t,360.0),old.y+(position.y-old.y)*t};
   }
+  struct OrderPreview {size_t fingerprint=0;double eta=0;std::vector<Point> path;};
+  std::map<size_t,OrderPreview> orderPreviews;
+  const OrderPreview& orderPreview(size_t id){
+    auto& cached=orderPreviews[id];const auto& unit=sim.state.units[id];
+    size_t signature=std::hash<int>{}(sim.state.day);
+    auto mix=[&](double value){signature^=std::hash<double>{}(value)+0x9e3779b9+(signature<<6)+(signature>>2);};
+    mix(unit.position.x);mix(unit.position.y);mix(unit.destination.x);mix(unit.destination.y);mix(unit.health);mix(unit.remaining);mix(unit.moving);mix(unit.type==UnitType::Infantry?0:int(unit.type));
+    for(auto point:unit.waypoints){mix(point.x);mix(point.y);}mix(unit.waypoints.size());
+    for(auto point:unit.pendingDestinations){mix(point.x);mix(point.y);}mix(unit.pendingDestinations.size());
+    if(cached.fingerprint!=signature){cached.fingerprint=signature;cached.eta=sim.unitArrivalETA(id);cached.path=sim.unitPlannedPath(id);}
+    return cached;
+  }
+  double arrivalETA(size_t id){return orderPreview(id).eta;}
   void controls(double dt){
     selectedUnits.erase(std::remove_if(selectedUnits.begin(),selectedUnits.end(),[&](int id){return id<0||id>=int(sim.state.units.size())||sim.state.units[id].health<=0;}),selectedUnits.end());
     if(selectedUnit>=0&&(selectedUnit>=int(sim.state.units.size())||sim.state.units[selectedUnit].health<=0)){
@@ -328,6 +351,22 @@ struct App {
       if(screen==Game&&ImGui::IsKeyPressed(ImGuiKey_F)&&selectedUnit>=0&&selectedUnit<int(sim.state.units.size())){
         center(sim.state.units[selectedUnit].position);
         camera.zoom=std::max(camera.zoom,40.0);
+      }
+      if(screen==Game&&panel!=Research){
+        const ImGuiKey groupKeys[]={ImGuiKey_0,ImGuiKey_1,ImGuiKey_2,ImGuiKey_3,ImGuiKey_4,ImGuiKey_5,ImGuiKey_6,ImGuiKey_7,ImGuiKey_8,ImGuiKey_9};
+        for(int n=0;n<10;++n)if(ImGui::IsKeyPressed(groupKeys[n],false)){
+          if(io.KeyCtrl){controlGroups[n]=selectedUnits;notice("Control group "+std::to_string(n)+" assigned");}
+          else{
+            if(!io.KeyShift)selectedUnits.clear();
+            for(int id:controlGroups[n])if(id>=0&&id<int(sim.state.units.size())&&sim.state.units[id].owner==sim.state.player&&sim.state.units[id].health>0&&std::find(selectedUnits.begin(),selectedUnits.end(),id)==selectedUnits.end())selectedUnits.push_back(id);
+            selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=selectedRegion=-1;unitOpen=selectedUnit>=0;
+          }
+        }
+        if(io.KeyCtrl&&ImGui::IsKeyPressed(ImGuiKey_A,false)){
+          selectedUnits.clear();for(size_t i=0;i<sim.state.units.size();++i){const auto& u=sim.state.units[i];bool visible=false;auto p=camera.project(u.position,&visible);if(u.owner==sim.state.player&&u.health>0&&u.remaining<=0&&visible&&p.x>=camera.x&&p.x<camera.x+camera.width&&p.y>=camera.y&&p.y<camera.y+camera.height)selectedUnits.push_back(int(i));}
+          selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=selectedRegion=-1;unitOpen=selectedUnit>=0;
+        }
+        if(ImGui::IsKeyPressed(ImGuiKey_X,false)){for(int id:selectedUnits)sim.holdUnit(size_t(id));notice("Selected formations stopped");}
       }
       if(screen==Game){
         if(ImGui::IsKeyPressed(ImGuiKey_Space))paused=!paused;
@@ -349,7 +388,7 @@ struct App {
     if(mapBlocked)cancelGestures();
     keyboardAllowed=!io.WantTextInput&&!mapBlocked;
     bool over=pointer.x>=camera.x&&pointer.x<camera.x+camera.width&&pointer.y>=camera.y&&pointer.y<camera.y+camera.height;
-    if(keyboardAllowed){
+    if(keyboardAllowed&&!io.KeyCtrl){
       double horizontal=(ImGui::IsKeyDown(ImGuiKey_D)||ImGui::IsKeyDown(ImGuiKey_RightArrow))-(ImGui::IsKeyDown(ImGuiKey_A)||ImGui::IsKeyDown(ImGuiKey_LeftArrow));
       double vertical=(ImGui::IsKeyDown(ImGuiKey_W)||ImGui::IsKeyDown(ImGuiKey_UpArrow))-(ImGui::IsKeyDown(ImGuiKey_S)||ImGui::IsKeyDown(ImGuiKey_DownArrow));
       double length=std::hypot(horizontal,vertical);
@@ -373,13 +412,13 @@ struct App {
           auto geo=camera.unproject(pointer);
           if(geo){
             bool issued=false;
-            for(int id:selectedUnits)issued=sim.orderUnitAt(id,*geo)||issued;
-            notice(issued?"Orders issued":"Order blocked: check access, readiness and war status");
+            for(int id:selectedUnits)issued=sim.orderUnitAt(id,*geo,io.KeyShift)||issued;
+            notice(issued?(io.KeyShift?"Orders queued":"Orders issued"):"Order blocked: check access, readiness and war status");
           }
         }
       }
       if(ImGui::IsMouseClicked(ImGuiMouseButton_Left)){
-        leftStarted=true;
+        leftStarted=true;leftDoubleClick=ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
         leftStart=pointer;leftGesture.begin(pointer);
       }
     }
@@ -497,11 +536,14 @@ struct App {
     pauseMenu(w,h);
   }
   void frame(float w,float h,double dt){
-    camera.x=screen==Game&&panel!=None&&panel!=Research?320:0;
-    camera.y=60;
+    if(autoUiScale)uiScale=effectiveUiScale(w,h);
+    ImGui::GetIO().FontGlobalScale=uiScale;
+    static const ImGuiStyle baseStyle=ImGui::GetStyle();ImGui::GetStyle()=baseStyle;ImGui::GetStyle().ScaleAllSizes(uiScale);
+    camera.x=screen==Game&&panel!=None&&panel!=Research?320*uiScale:0;
+    camera.y=screen==Game?hudHeight():60;
     camera.borders=showBorders;
-    camera.width=w-camera.x-(screen==Game?340:0);
-    camera.height=h-118;
+    camera.width=w-camera.x-(screen==Game&&panel!=Research&&selectedUnit<0?inspectorWidth(w):0);
+    camera.height=h-camera.y-(screen==Game?commandHeight():58);
     ImGui::GetIO().FontGlobalScale=uiScale;
     if(screen==Menu){
       camera.longitude=std::remainder(camera.longitude+dt*1.2,360.0);
@@ -588,7 +630,7 @@ int main(int argc,char** argv){
     world.load(data+"/world.geojson",data+"/histories.json");
     App app(std::move(world),smoke?shots:userData());
     app.renderer.initialise(app.world,data);
-    if(smoke&&argc>5)app.uiScale=std::clamp(std::stof(argv[5]),.85f,1.4f);
+    if(smoke&&argc>5){app.autoUiScale=false;app.uiScale=std::clamp(std::stof(argv[5]),.85f,1.4f);}
     std::cout<<"OpenGL "<<app.renderer.version<<" | "<<app.world.countries.size()<<" countries | "<<app.renderer.landVertices<<" cached vertices\n";
     if(smoke)std::filesystem::create_directories(shots);
     auto last=std::chrono::steady_clock::now();

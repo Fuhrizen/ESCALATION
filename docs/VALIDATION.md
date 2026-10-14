@@ -47,3 +47,7 @@ EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 ./build-native/escalation --smo
 Sanitizers exclude deliberate exception/unwinding fixtures and leak enumeration because this restricted workspace cannot expose process/stack metadata. Ordinary core tests include malformed-save cases. Compiler temporary files are isolated in the verification directory.
 
 These results validate deterministic flows and native presentation, not balanced competitive matches or physical-device usability on every desktop. Windows runtime, real rootless Podman image execution, multiple GPUs and long playtests were not performed. Road/rivers are generalized strategic vectors; rivers have no movement/combat effect. The bounded route planner can reject complex feasible detours. Only two nations receive detailed simulation, and complete reference-game catalogs/loadouts, detection, interception and diplomacy remain further work.
+
+## 0.5.0 focused pass
+
+One consolidated native build, tactical queue/save checks and native input integration passed. New cases cover queue append/replacement/completion, invalid-order preservation, stop, save restoration, control-group recall, the full date and automatic scale response. A single 1280×720 render pass at 125% scale covered the changed dock and map surfaces; clipped top-bar/dock content was corrected by increasing their layout heights. The major-release policy was checked against six eligible/ineligible tag/version/history cases; Windows and Linux hosted packaging will first run on a published, explicitly approved vX.0.0 release.

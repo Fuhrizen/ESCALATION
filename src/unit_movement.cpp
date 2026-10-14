@@ -11,23 +11,36 @@ namespace escalation {
       auto& u=state.units[i];
       u.path.clear();
       u.waypoints.clear();
+      u.pendingDestinations.clear();
+      u.destination=u.position;
       u.moving=false;
       u.target=-1;
     }
   }
-  bool Simulation::orderUnit(size_t i,int r){
+  bool Simulation::orderUnit(size_t i,int r,bool append){
     if(r<0||r>=int(state.regions.size()))return false;
-    return orderUnitAt(i,state.regions[r].center);
+    return orderUnitAt(i,state.regions[r].center,append);
   }
-  bool Simulation::orderUnitAt(size_t i,Point p){
+  bool Simulation::orderUnitAt(size_t i,Point p,bool append){
     if(i>=state.units.size())return false;
     auto& u=state.units[i];
     if(u.owner!=state.player||u.health<=0||u.remaining>0)return false;
-    if(!planUnitMovement(u,p))return false;
+    // Validate a queued leg from its eventual start without changing the live route.
+    Unit planned=u;
+    if(append&&u.moving){
+      if(u.pendingDestinations.size()>=64)return false;
+      planned.position=u.pendingDestinations.empty()?u.destination:u.pendingDestinations.back();
+      if(!planUnitMovement(planned,p))return false;
+      u.pendingDestinations.push_back(planned.destination);
+      return true;
+    }
+    if(!planUnitMovement(planned,p))return false;
+    planned.pendingDestinations.clear();
+    u=std::move(planned);
     if(u.target>=0&&state.regions[u.target].owner==state.enemy)state.target=u.target;
     return true;
   }
-  bool Simulation::planUnitMovement(Unit& u,Point p){
+  bool Simulation::planUnitMovement(Unit& u,Point p) const{
     if(!std::isfinite(p.x)||!std::isfinite(p.y)||p.y< -90||p.y>90)return false;
     p.x=std::remainder(p.x,360.0);
     int destination=regionAt(p);
@@ -107,14 +120,60 @@ namespace escalation {
     u.waypoints=std::move(route);u.destination=p;u.target=destination;u.moving=true;
     return true;
   }
+  std::vector<Point> Simulation::unitPlannedPath(size_t i) const{
+    if(i>=state.units.size())return {};
+    Unit unit=state.units[i];
+    if(!unit.moving||unit.health<=0||unit.remaining>0)return {};
+    if(unit.waypoints.empty()&&!planUnitMovement(unit,unit.destination))return {};
+    std::vector<Point> path=unit.waypoints;
+    unit.position=unit.destination;
+    for(Point destination:state.units[i].pendingDestinations){
+      if(!planUnitMovement(unit,destination))break;
+      path.insert(path.end(),unit.waypoints.begin(),unit.waypoints.end());
+      unit.position=unit.destination;
+    }
+    return path;
+  }
+  double Simulation::unitArrivalETA(size_t i) const{
+    if(i>=state.units.size())return std::numeric_limits<double>::infinity();
+    Unit unit=state.units[i];
+    if(unit.health<=0||unit.remaining>0)return std::numeric_limits<double>::infinity();
+    if(!unit.moving)return 0;
+    if(unit.waypoints.empty()&&!planUnitMovement(unit,unit.destination))return std::numeric_limits<double>::infinity();
+    double seconds=0;
+    auto routeETA=[&](){
+      for(Point point:unit.waypoints){
+        double length=distanceKm(unit.position,point);
+        // Sample changing road bonuses along each leg, retaining the current
+        // support-technology modifier. Future combat and research are unknown.
+        int samples=std::max(1,int(std::ceil(length/5.0)));
+        Point start=unit.position;
+        double dx=std::remainder(point.x-start.x,360.0),dy=point.y-start.y;
+        for(int n=0;n<samples;++n){
+          double t=(n+.5)/samples;
+          unit.position={std::remainder(start.x+dx*t,360.0),start.y+dy*t};
+          double speed=unitSpeedKmPerSecond(unit);
+          if(speed<=0){seconds=std::numeric_limits<double>::infinity();return;}
+          seconds+=length/(samples*speed);
+        }
+        unit.position=point;
+      }
+    };
+    routeETA();
+    for(Point point:state.units[i].pendingDestinations){
+      if(!planUnitMovement(unit,point))return std::numeric_limits<double>::infinity();
+      routeETA();
+    }
+    return seconds;
+  }
   void Simulation::unitsTick(){
     for(auto& u:state.units){
-      if(u.health<=0)continue;
+      if(u.health<=0){u.pendingDestinations.clear();continue;}
       if(u.remaining>0)continue; // Production is allocated by economy(), per producer.
       if(!u.moving)continue;
       if(u.waypoints.empty()){
         // Older snapshots have region-only orders; validate a fresh geometric route.
-        if(!planUnitMovement(u,u.destination)){u.moving=false;u.path.clear();continue;}
+        if(!planUnitMovement(u,u.destination)){u.moving=false;u.path.clear();u.pendingDestinations.clear();continue;}
       }
       Point destination=u.waypoints.front();
       double dx=std::remainder(destination.x-u.position.x,360.0),dy=destination.y-u.position.y;
@@ -124,7 +183,15 @@ namespace escalation {
         u.position=destination;u.waypoints.erase(u.waypoints.begin());
         int reached=regionAt(destination);
         if(!u.path.empty()&&reached==u.path.front())u.path.erase(u.path.begin());
-        if(u.waypoints.empty()){u.moving=false;u.path.clear();if(u.target>=0)u.region=u.target;}
+        if(u.waypoints.empty()){
+          u.moving=false;u.path.clear();if(u.target>=0)u.region=u.target;
+          if(!u.pendingDestinations.empty()){
+            Point next=u.pendingDestinations.front();
+            u.pendingDestinations.erase(u.pendingDestinations.begin());
+            // Ownership or transport capacity may have changed since the order.
+            if(!planUnitMovement(u,next))u.pendingDestinations.clear();
+          }
+        }
       }
       else{
         u.position.x=std::remainder(u.position.x+dx/length*speed,360.0);

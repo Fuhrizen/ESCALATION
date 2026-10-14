@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
-project(Escalation VERSION 0.4.0 LANGUAGES C CXX)
+project(Escalation VERSION 0.5.0 LANGUAGES C CXX)
+# Ship Windows packages without requiring a separate Visual C++ runtime installer.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

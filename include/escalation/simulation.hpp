@@ -29,6 +29,7 @@ namespace escalation {
     double health=100,remaining=0,total=0;
     std::vector<int> path;
     std::vector<Point> waypoints;
+    std::vector<Point> pendingDestinations;
     bool moving=false;
   };
   struct UnitStats { double speedKmPerSecond,rangeKm,damagePerSecond; };
@@ -112,7 +113,7 @@ namespace escalation {
     void researchTick();
     void combat();
     void unitsTick();
-    bool planUnitMovement(Unit& unit,Point destination);
+    bool planUnitMovement(Unit& unit,Point destination) const;
     public: std::vector<Tech> techs;
     Campaign state;
     explicit Simulation(const World& world):world_(&world),techs(makeTechTree()){} void start(int nation,Field focus=Field::Economy,bool simpleEconomy=true);
@@ -127,6 +128,8 @@ namespace escalation {
     double buildingETA(Facility type) const;
     double buildingETA(size_t queueIndex) const;
     double unitETA(size_t index) const;
+    double unitArrivalETA(size_t index) const;
+    std::vector<Point> unitPlannedPath(size_t index) const;
     double unitBuildETA(UnitType type,int site) const;
     double unitSpeedKmPerSecond(const Unit& unit) const;
     double unitRangeKm(const Unit& unit) const;
@@ -156,8 +159,8 @@ namespace escalation {
     double unitDays(UnitType type) const;
     std::string unitReason(UnitType type,int site) const;
     bool queueUnit(UnitType type,int site);
-    bool orderUnit(size_t index,int destination);
-    bool orderUnitAt(size_t index,Point destination);
+    bool orderUnit(size_t index,int destination,bool append=false);
+    bool orderUnitAt(size_t index,Point destination,bool append=false);
     void holdUnit(size_t index);
     bool cancelUnit(size_t index);
     bool connect(int a,int b);

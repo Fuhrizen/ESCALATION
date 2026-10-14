@@ -94,7 +94,7 @@ void Simulation::combat(){
   for(size_t i=0;i<state.units.size();++i){
     auto& u=state.units[i];double previous=u.health;u.health=std::max(0.0,u.health-damage[i]);
     if(previous>0&&u.health<=0)log(std::string(u.owner==state.player?"Formation lost: ":"Enemy formation destroyed: ")+unitNames[int(u.type)]);
-    if(u.health<=0){u.moving=false;u.path.clear();u.waypoints.clear();}
+    if(u.health<=0){u.moving=false;u.path.clear();u.waypoints.clear();u.pendingDestinations.clear();}
   }
   for(size_t cityIndex=0;cityIndex<state.settlements.size();++cityIndex){
     auto& city=state.settlements[cityIndex];
@@ -123,7 +123,7 @@ void Simulation::combat(){
       region.owner=newOwner;
       // Queued formations cannot emerge under their former owner at a seized base.
       for(auto& unit:state.units)if(unit.remaining>0&&unit.sourceSite>=0&&unit.sourceSite<int(state.sites.size())&&state.sites[unit.sourceSite].region==int(r)&&unit.owner!=newOwner){
-        unit.health=0;unit.remaining=0;unit.moving=false;unit.path.clear();unit.waypoints.clear();
+        unit.health=0;unit.remaining=0;unit.moving=false;unit.path.clear();unit.waypoints.clear();unit.pendingDestinations.clear();
       }
       log(newOwner==state.player?"Region secured: every settlement is held":"Enemy recaptured a region");
     }

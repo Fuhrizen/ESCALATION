@@ -393,7 +393,7 @@ namespace escalation {
     if(!ready)return false;
     state.stock[6]-=1;state.nuclearUsed=true;
     for(auto& site:state.sites)if(site.region==region){site.destroyed=true;site.enabled=false;}
-    for(auto& unit:state.units){if(unit.region==region)unit.health=0;else if(unit.owner==state.player)unit.health*=0.45;unit.moving=false;unit.path.clear();unit.waypoints.clear();}
+    for(auto& unit:state.units){if(unit.region==region)unit.health=0;else if(unit.owner==state.player)unit.health*=0.45;unit.moving=false;unit.path.clear();unit.waypoints.clear();unit.pendingDestinations.clear();}
     state.stability=std::max(0.0,state.stability-65);
     for(auto& site:state.sites)if(state.regions[site.region].owner==state.player&&site.type!=Facility::Depot)site.enabled=false;
     state.target=-1;state.defeat=true;state.war=false;
@@ -406,7 +406,7 @@ namespace escalation {
     auto n=[&](const char* k,double v){
       o[k]=num(v);
     };
-    n("version",4);
+    n("version",5);
     n("simple",state.simpleEconomy);
     o["player"]=str(world_->countries[state.player].code);
     o["enemy"]=str(world_->countries[state.enemy].code);
@@ -456,7 +456,7 @@ namespace escalation {
     for(const auto& job:state.buildingQueue){Object v;v["type"]=num(int(job.type));v["progress"]=num(job.progress);v["total"]=num(job.total);buildings.push_back(Json(v));}
     o["buildingQueue"]=Json(buildings);
     Array ready;for(int count:state.buildingInventory)ready.push_back(num(count));o["buildingInventory"]=Json(ready);
-    Array units;for(auto& u:state.units){Object v;v["owner"]=str(world_->countries[u.owner].code);v["region"]=num(u.region);v["target"]=num(u.target);v["source"]=num(u.sourceSite);v["type"]=num(int(u.type));v["x"]=num(u.position.x);v["y"]=num(u.position.y);v["dx"]=num(u.destination.x);v["dy"]=num(u.destination.y);v["health"]=num(u.health);v["remaining"]=num(u.remaining);v["total"]=num(u.total);v["moving"]=num(u.moving);Array path;for(int r:u.path)path.push_back(num(r));v["path"]=Json(path);Array waypoints;for(Point p:u.waypoints){Array xy{num(p.x),num(p.y)};waypoints.push_back(Json(xy));}v["waypoints"]=Json(waypoints);units.push_back(Json(v));}o["units"]=Json(units);
+    Array units;for(auto& u:state.units){Object v;v["owner"]=str(world_->countries[u.owner].code);v["region"]=num(u.region);v["target"]=num(u.target);v["source"]=num(u.sourceSite);v["type"]=num(int(u.type));v["x"]=num(u.position.x);v["y"]=num(u.position.y);v["dx"]=num(u.destination.x);v["dy"]=num(u.destination.y);v["health"]=num(u.health);v["remaining"]=num(u.remaining);v["total"]=num(u.total);v["moving"]=num(u.moving);Array path;for(int r:u.path)path.push_back(num(r));v["path"]=Json(path);Array waypoints;for(Point p:u.waypoints){Array xy{num(p.x),num(p.y)};waypoints.push_back(Json(xy));}v["waypoints"]=Json(waypoints);Array pending;for(Point p:u.pendingDestinations){Array xy{num(p.x),num(p.y)};pending.push_back(Json(xy));}v["pendingDestinations"]=Json(pending);units.push_back(Json(v));}o["units"]=Json(units);
     Array routes;
     for(auto& r:state.routes){
       Object v;
@@ -515,7 +515,7 @@ namespace escalation {
       if(std::floor(v)!=v)throw std::runtime_error("Non-integral save index");
       return int(v);
     };
-    int version=integer(o,"version",1,4);
+    int version=integer(o,"version",1,5);
     int player=world_->find(string(o,"player")),enemy=world_->find(string(o,"enemy"));
     Simulation candidate(*world_);
     candidate.start(player,Field(integer(o,"focus",0,7)),version>=2?bool(integer(o,"simple",0,1)):false);
@@ -622,6 +622,18 @@ namespace escalation {
             u.waypoints.push_back(p);
           }
         }
+        if(v.contains("pendingDestinations")){
+          const auto& points=asArray(field(v,"pendingDestinations"));
+          if(points.size()>64)throw std::runtime_error("Unit order queue too long");
+          for(const auto& point:points){
+            const auto& xy=asArray(point);
+            if(xy.size()!=2)throw std::runtime_error("Invalid queued destination");
+            Point p{asNumber(xy[0]),asNumber(xy[1])};
+            if(!std::isfinite(p.x)||!std::isfinite(p.y)||std::abs(p.x)>720||std::abs(p.y)>90)throw std::runtime_error("Invalid queued destination");
+            u.pendingDestinations.push_back(p);
+          }
+          if(!u.pendingDestinations.empty()&&(!u.moving||u.health<=0||u.remaining>0))throw std::runtime_error("Invalid queued unit readiness");
+        }
         c.units.push_back(std::move(u));
       }
     }
@@ -670,7 +682,7 @@ namespace escalation {
     for(int i=0;i<int(Resource::Warheads);++i)c.stock[i]=0;
     // Legacy movement did not store a safe geometric route. Replan through the
     // current land/sea rules rather than resuming an obsolete straight line.
-    if(version<3)for(auto& unit:c.units)if(unit.moving&&!candidate.planUnitMovement(unit,unit.destination)){unit.moving=false;unit.path.clear();unit.waypoints.clear();}
+    if(version<3)for(auto& unit:c.units)if(unit.moving&&!candidate.planUnitMovement(unit,unit.destination)){unit.moving=false;unit.path.clear();unit.waypoints.clear();unit.pendingDestinations.clear();}
     candidate.economy(false);
     c.lastAutosave=c.day;
     candidate.log("Campaign restored");

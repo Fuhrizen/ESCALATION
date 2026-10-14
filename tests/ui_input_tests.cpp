@@ -48,6 +48,14 @@ int main(){
     double zoom=app.camera.zoom;app.openPause();frame();check(!app.cameraMotion.zooming&&app.camera.zoom==zoom,"Modal opening cancels pending wheel zoom");
     app.pauseOpen=false;app.selectedUnit=0;app.selectedUnits={0};app.sim.state.units[0].health=0;frame();
     check(app.selectedUnit<0&&app.selectedUnits.empty(),"Destroyed selected formations stop offering live orders");
+    app.sim.state.units[0].health=100;app.selectedUnit=0;app.selectedUnits={0};app.panel=App::None;
+    io.AddKeyEvent(ImGuiMod_Ctrl,true);io.AddKeyEvent(ImGuiKey_1,true);frame();
+    io.AddKeyEvent(ImGuiKey_1,false);io.AddKeyEvent(ImGuiMod_Ctrl,false);frame();app.selectedUnits.clear();app.selectedUnit=-1;
+    io.AddKeyEvent(ImGuiKey_1,true);frame();check(app.selectedUnits==std::vector<int>{0},"Number recalls an assigned control group");io.AddKeyEvent(ImGuiKey_1,false);frame();
+    app.sim.state.units[0].pendingDestinations.push_back(app.sim.state.units[0].position);app.sim.state.units[0].moving=true;
+    io.AddKeyEvent(ImGuiKey_X,true);frame();check(!app.sim.state.units[0].moving&&app.sim.state.units[0].pendingDestinations.empty(),"X stops active and queued orders");io.AddKeyEvent(ImGuiKey_X,false);frame();
+    app.sim.state.day=59;check(app.campaignDate()=="1 March 1920","Full date preserves campaign calendar");
+    check(app.effectiveUiScale(1280,720)<app.effectiveUiScale(1920,1080),"Auto UI scale responds to screen dimensions");
     ImGui::DestroyContext();std::cout<<"Passed "<<checks<<" native input integration checks\n";return 0;
   }catch(const std::exception& e){std::cerr<<"Input check failed after "<<checks<<": "<<e.what()<<"\n";ImGui::DestroyContext();return 1;}
 }

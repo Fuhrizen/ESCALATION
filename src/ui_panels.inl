@@ -1,11 +1,6 @@
 // Included inside App; stable management and selection docks.
   void allocation(){
-    float budget=float(sim.state.researchBudget*100);
-    heading("NATIONAL ALLOCATION");
-    ImGui::TextWrapped("Research %.0f%%  /  Construction %.0f%%",budget,100-budget);
-    ImGui::SetNextItemWidth(-1);
-    if(ImGui::SliderFloat("##researchAllocation",&budget,0,100,"Research %.0f%%")){sim.state.researchBudget=budget/100;sim.refreshRates();}
-    tooltip("Drag left for construction; right for research. All active manufacturing jobs share construction capacity. Estimates are shown at 1x speed.");
+    ImGui::TextColored(muted,"National allocation is set in the top bar.");
   }
   void buildPanel(){
     heading("CONSTRUCTION");allocation();
@@ -99,20 +94,67 @@
       wrapped("Nuclear release triggers retaliatory deterrence, mutual destruction and ends the campaign.");
       if(button("Confirm strategic release")){if(!sim.launchNuclear(id))notice("Delivery unavailable: check missile site and technology");ImGui::CloseCurrentPopup();}ImGui::SameLine();if(button("Cancel"))ImGui::CloseCurrentPopup();ImGui::EndPopup();}
   }
+  void unitDockCard(int id){
+    if(id<0||id>=int(sim.state.units.size()))return;
+    auto& unit=sim.state.units[id];
+    bool friendly=unit.owner==sim.state.player;
+    if(ImGui::BeginTable("Unit command columns",3,ImGuiTableFlags_SizingStretchProp)){
+      ImGui::TableSetupColumn("Identity",ImGuiTableColumnFlags_WidthStretch,1.1f);
+      ImGui::TableSetupColumn("Statistics",ImGuiTableColumnFlags_WidthStretch,1.1f);
+      ImGui::TableSetupColumn("Orders",ImGuiTableColumnFlags_WidthStretch,1.f);
+      ImGui::TableNextColumn();
+      auto p=ImGui::GetCursorScreenPos();command_icons::badge(ImGui::GetWindowDrawList(),{p.x+18,p.y+18},29,int(unit.type),IM_COL32(99,216,207,255));
+      ImGui::Dummy({40,38});ImGui::SameLine();ImGui::TextWrapped("%s",unitNames[int(unit.type)]);
+      flag(unit.owner);ImGui::SameLine();ImGui::TextColored(muted,"%s",friendly?"Friendly":"Enemy");
+      ImGui::TextColored(muted,"%zu selected",selectedUnits.size());
+      ImGui::TextColored(muted,"%zu orders queued",unit.pendingDestinations.size());
+      if(hoverUnit>=0&&hoverUnit!=id&&hoverUnit<int(sim.state.units.size())){
+        const auto& other=sim.state.units[hoverUnit];ImGui::TextColored(muted,"Hover: %s / %.0f%%",unitNames[int(other.type)],other.health);
+      }
+      ImGui::TableNextColumn();
+      std::string strength="Strength "+std::to_string(int(std::round(unit.health)))+"%";
+      ImGui::ProgressBar(float(unit.health/100),{-1,0},strength.c_str());
+      ImGui::Text("Speed %.2f km/s",sim.unitSpeedKmPerSecond(unit));
+      ImGui::Text("Range %.0f km",sim.unitRangeKm(unit));
+      bool engaged=false;
+      if(sim.state.war&&unit.remaining<=0)for(const auto& enemy:sim.state.units)if(enemy.owner!=unit.owner&&enemy.health>0&&enemy.remaining<=0&&canEngage(unit.type,enemy.type)&&distanceKm(unit.position,enemy.position)<=sim.unitRangeKm(unit)){engaged=true;break;}
+      ImGui::TextColored(engaged?ImVec4(.96f,.75f,.4f,1):muted,"%s",unit.remaining>0?"In production":engaged?"Engaging enemy":unit.moving?"Moving":"Holding position");
+      if(unit.moving)ImGui::Text("Arrival %s",durationText(arrivalETA(size_t(id))).c_str());
+      ImGui::TableNextColumn();
+      if(friendly){
+        if(unit.remaining>0){ImGui::TextWrapped("%s remaining",durationText(sim.unitETA(size_t(id))).c_str());if(ImGui::Button("Cancel production",{-1,0}))sim.cancelUnit(id);}
+        else{
+          if(ImGui::Button("Move / attack",{-1,0}))commandMode=true;
+          if(ImGui::Button("Stop [X]",{-1,0}))for(int selected:selectedUnits)sim.holdUnit(selected);
+          if(ImGui::Button("Focus [F]",{-1,0})){center(unit.position);camera.zoom=std::max(camera.zoom,40.0);}
+        }
+      }else ImGui::TextWrapped("Enemy formation. Select friendly units to issue orders.");
+      ImGui::EndTable();
+    }
+  }
   void inspector(float w,float h){
-    fixedWindow("Inspector",w-340,60,340,h-118);
+    if(panel==Research)return;
+    float width=inspectorWidth(w),height=inspectorHeight(h);
+    fixedWindow("Inspector",w-width,selectedUnit>=0?h-commandHeight()-height:hudHeight(),width,height);
+    if(selectedUnit>=0){
+      ImGui::TextColored(accent,"UNIT COMMAND");ImGui::Separator();unitDockCard(selectedUnit);
+      ImGui::Separator();
+      ImGui::TextColored(muted,"Shift-right: queue  |  Ctrl+1: assign  |  1: recall");
+      tooltip("Shift + right-click queues destinations. Ctrl + number assigns a control group; number recalls it. Double-click selects visible units of the same type. Ctrl+A selects all visible friendly units. X stops selected units.");
+      ImGui::TextColored(muted,"Double-click: type  |  Ctrl+A: visible  |  X: stop");
+      ImGui::End();return;
+    }
     heading("COMMAND INSPECTOR");
     bool differentUnit=hoverUnit>=0&&hoverUnit!=selectedUnit;
     bool differentSite=hoverSite>=0&&hoverSite!=selectedSite;
     if(differentUnit||differentSite){
       heading("HOVER PREVIEW");
-      ImGui::BeginChild("Compact hover",{0,100},false,ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
+      ImGui::BeginChild("Compact hover",{0,100*uiScale},false,ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
       if(differentUnit)unitCard(hoverUnit,true);else siteCard(hoverSite,true);
       ImGui::EndChild();ImGui::Separator();
     }
     heading("SELECTED");
-    if(selectedUnit>=0){if(selectedUnits.size()>1){ImGui::Text("%zu units in formation",selectedUnits.size());wrapped("Focused member statistics:");}unitCard(selectedUnit,false);}
-    else if(selectedSite>=0)siteCard(selectedSite,false);
+    if(selectedSite>=0)siteCard(selectedSite,false);
     else if(selectedRegion>=0)regionCard(selectedRegion);
     else {wrapped("Select a unit or building on the map.");ImGui::TextColored(muted,"Left click selects");ImGui::TextColored(muted,"Shift click adds / removes");ImGui::TextColored(muted,"Drag a box for a formation");ImGui::TextColored(muted,"Empty click clears selection");}
     ImGui::End();
@@ -130,7 +172,7 @@
   }
   void sidePanel(float,float h){
     if(panel==None||panel==Research)return;
-    fixedWindow("Management",0,60,320,h-118);
+    fixedWindow("Management",0,hudHeight(),managementWidth(),h-hudHeight()-commandHeight());
     if(button("Close panel"))panel=None;
     switch(panel){case Build:buildPanel();break;case Forces:forcesPanel();break;case Log:heading("COMMAND LOG");for(auto& event:sim.state.events)wrapped(event);break;default:break;}ImGui::End();
   }

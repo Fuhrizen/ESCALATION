@@ -55,3 +55,5 @@ Captured from the running version-0.4 OpenGL application using Linux EGL smoke m
 ![Ready placement](placement.png)
 
 Screens were captured from the native client at 1920×1080; the 1280×720, 125% scale layout was also rendered and inspected.
+
+The 0.5.0 unit inspector and options captures use 1280×720 at 125% manual UI scale to show the corrected horizontal dock, allocation bar and scale controls. Older captures illustrate the preceding command surfaces.

@@ -2,11 +2,11 @@
   int researchSelected=-1;
   void researchTree(float w,float h){
     int& selected=researchSelected;static char search[96]{};static float zoom=1;static bool fit=false,current=true;
-    bool open=true;ImGui::SetNextWindowSize({w,h-118});ImGui::SetNextWindowPos({0,60});
+    bool open=true;ImGui::SetNextWindowSize({w,h-hudHeight()-commandHeight()});ImGui::SetNextWindowPos({0,hudHeight()});
     ImGui::Begin("TECHNOLOGY COMMAND",&open,ImGuiWindowFlags_NoCollapse|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoResize);
     auto& s=sim.state;auto duration=[](double seconds){return std::isfinite(seconds)?durationText(seconds):std::string("Paused");};
     for(int f=0;f<8;++f){if(f)ImGui::SameLine();ImGui::PushID(f);if(button(fieldNames[f])){focus=f;current=true;}ImGui::PopID();}
-    ImGui::SetNextItemWidth(205);float budget=float(s.researchBudget*100);if(ImGui::SliderFloat("Research allocation",&budget,0,100,"%.0f%%")){s.researchBudget=budget/100;sim.refreshRates();}ImGui::SameLine();ImGui::Checkbox("Auto queue doctrine",&autoResearch);ImGui::SameLine();if(button("Fit"))fit=true;ImGui::SameLine();if(button("Current"))current=true;ImGui::SameLine();ImGui::SetNextItemWidth(180);ImGui::InputTextWithHint("##techsearch","Search this field",search,sizeof(search));
+    ImGui::Checkbox("Auto queue doctrine",&autoResearch);ImGui::SameLine();if(button("Fit"))fit=true;ImGui::SameLine();if(button("Current"))current=true;ImGui::SameLine();ImGui::SetNextItemWidth(180);ImGui::InputTextWithHint("##techsearch","Search this field",search,sizeof(search));
     ImGui::Separator();
     ImGui::BeginChild("Technology inspector",{278,0},ImGuiChildFlags_Borders);
     ImGui::TextColored(accent,"RESEARCH PROGRAMME");
