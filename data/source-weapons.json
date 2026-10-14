@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "source": "User-supplied ICBM ESCALATION unit extracts; original rights retained",
+  "sourceHashes": {
+    "Units.txt": "2ccad2490499e0dca177e692bb3b0694068fbf3f9423caa8d84f2ba20e83a271",
+    "Missile_defs.txt": "5ffd88e7f0c48bb34c89821692c0031222faaa4d6c1bfd1176b22602fa9f763a",
+    "Missile_types.txt": "84bc6836e1697cc3fa0118ed55cb24fe883500fb5ca368b4e50645e1d73faae4"
+  },
+  "policy": "Base naval range directives only. No conditional tech, COPY/MODIFY, damage, time, speed, targets or asset binaries evaluated.",
+  "weapons": [
+    {
+      "nativeWeaponId": "naval_gun",
+      "sourceMissile": "Ship Gun",
+      "rangeKm": 500.0,
+      "tech": "M_Ship_Gun",
+      "type": "Default",
+      "icon": "Units/Images/Missiles/SHIP_GUN.png",
+      "unresolvedModifierLines": 6
+    },
+    {
+      "nativeWeaponId": "anti_ship",
+      "sourceMissile": "Anti Ship Missile",
+      "rangeKm": 550.0,
+      "tech": "M_Anti_Ship_Missile",
+      "icon": "Units/Images/Missiles/AShM_1.png",
+      "unresolvedModifierLines": 30
+    },
+    {
+      "nativeWeaponId": "cruise",
+      "sourceMissile": "SSM",
+      "rangeKm": 650.0,
+      "tech": "M_Surface_to_surface_missile",
+      "type": "LandAttack",
+      "icon": "Units/Images/Missiles/CRUISE_MISSILE_1.png",
+      "unresolvedModifierLines": 25
+    },
+    {
+      "nativeWeaponId": "sub_torpedo",
+      "sourceMissile": "Torpedo",
+      "rangeKm": 200.0,
+      "tech": "M_Torpedo",
+      "type": "Torpedo",
+      "icon": "Units/Images/Missiles/Torpedo_1.png",
+      "unresolvedModifierLines": 24
+    },
+    {
+      "nativeWeaponId": "depth_charge",
+      "sourceMissile": "DepthCharge",
+      "rangeKm": 50.0,
+      "tech": "M_DepthCharge",
+      "type": "DepthCharge",
+      "icon": "Units/Images/Missiles/DEPTH_CHARGE.png",
+      "unresolvedModifierLines": 1
+    }
+  ]
+}

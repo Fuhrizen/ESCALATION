@@ -5,6 +5,7 @@
 #include <iomanip>
 
 namespace escalation {
+#include "source_weapon_ranges.inc"
 int nearestCoastNation(const World& world,Point p){
   double closest=1e20;int nation=-1;double scale=std::max(.2,std::cos(p.y*.01745329252));
   for(size_t c=0;c<world.countries.size();++c)for(const auto& polygon:world.countries[c].polygons)for(const auto& ring:polygon.rings)for(size_t n=1;n<ring.size();++n){
@@ -46,7 +47,7 @@ bool weaponTargets(const WeaponProfile& w,UnitType t){return activeUnit(t)&&(w.t
 std::vector<WeaponProfile> baseWeapons(UnitType t){
   // These are strategic-map gameplay values, not real-world equipment specifications.
   auto weapon=[](const char* id,const char* name,unsigned mask,double lo,double hi,double damage,double cooldown,int rounds,int reserve,double reload,double speed,const char* behaviour){
-    WeaponProfile w;w.id=id;w.name=name;w.targetMask=mask;w.minRangeKm=lo;w.maxRangeKm=hi;w.damage=damage;w.cooldownSeconds=cooldown;w.magazine=rounds;w.reserveAmmo=reserve;w.reloadSeconds=reload;w.projectileSpeedKmPerSecond=speed;w.behaviour=behaviour;return w;
+    WeaponProfile w;w.id=id;w.name=name;w.targetMask=mask;w.minRangeKm=lo;w.maxRangeKm=sourceWeaponRange(id,hi);w.damage=damage;w.cooldownSeconds=cooldown;w.magazine=rounds;w.reserveAmmo=reserve;w.reloadSeconds=reload;w.projectileSpeedKmPerSecond=speed;w.behaviour=behaviour;return w;
   };
   constexpr unsigned ground=unsigned(TargetDomain::Ground),naval=unsigned(TargetDomain::Naval),sub=unsigned(TargetDomain::Submerged);
   switch(t){
@@ -87,7 +88,7 @@ double Simulation::unitSpeedKmPerSecond(const Unit& unit) const {
 }
 std::vector<WeaponProfile> Simulation::unitWeapons(const Unit& u) const {
   auto weapons=baseWeapons(u.type);
-  if((u.type==UnitType::Destroyer||u.type==UnitType::Cruiser)&&(u.owner!=state.player||!hasTech(116)))for(auto& w:weapons)if(w.id=="asw_torpedo"){w.id="depth_charge";w.name="Depth charges";w.behaviour="Snapshot anti-submarine attack";w.maxRangeKm=8;w.damage=4;}
+  if((u.type==UnitType::Destroyer||u.type==UnitType::Cruiser)&&(u.owner!=state.player||!hasTech(116)))for(auto& w:weapons)if(w.id=="asw_torpedo"){w.id="depth_charge";w.name="Depth charges";w.behaviour="Snapshot anti-submarine attack";w.maxRangeKm=sourceWeaponRange("depth_charge",8);w.damage=4;}
   if(u.owner!=state.player){weapons.erase(std::remove_if(weapons.begin(),weapons.end(),[](const WeaponProfile& w){return w.id=="anti_ship"||w.id=="cruise";}),weapons.end());return weapons;}
   weapons.erase(std::remove_if(weapons.begin(),weapons.end(),[&](const WeaponProfile& w){return (w.id=="asw_torpedo"&&!hasTech(116))||(w.id=="anti_ship"&&!hasTech(117))||(w.id=="cruise"&&!hasTech(119));}),weapons.end());
   if(u.type==UnitType::Infantry&&hasTech(18)){

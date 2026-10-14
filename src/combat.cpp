@@ -1,5 +1,6 @@
 #include "escalation/simulation.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <unordered_map>
@@ -13,6 +14,43 @@ bool ready(const Unit& u) { return u.deployed&&u.health>0&&u.remaining<=0; }
 double strength(const Unit& u) {
   return (u.type==UnitType::Armour?1.8:u.type==UnitType::Artillery?1.2:1.0)*u.health/100;
 }
+// Chord distance on the unit sphere orders points exactly like great-circle
+// distance, while admitting an exact k-d tree search across poles and the seam.
+// Rebuilt after movement each tick: no stale orders when a formation moves/dies.
+class ThreatIndex {
+  struct Entry { std::array<double,3> xyz; size_t unit; };
+  std::vector<Entry> entries;
+  static std::array<double,3> coordinates(Point p){
+    constexpr double radians=0.017453292519943295;
+    double latitude=p.y*radians,longitude=p.x*radians;
+    return {std::cos(latitude)*std::cos(longitude),std::cos(latitude)*std::sin(longitude),std::sin(latitude)};
+  }
+  void build(size_t first,size_t last,int axis){
+    if(first>=last)return;
+    size_t middle=(first+last)/2;
+    std::nth_element(entries.begin()+first,entries.begin()+middle,entries.begin()+last,
+      [axis](const Entry& a,const Entry& b){return a.xyz[axis]<b.xyz[axis];});
+    build(first,middle,(axis+1)%3);build(middle+1,last,(axis+1)%3);
+  }
+  template<class Eligible> void search(size_t first,size_t last,int axis,const std::array<double,3>& point,
+      const Eligible& eligible,double& best,size_t& result) const {
+    if(first>=last)return;
+    size_t middle=(first+last)/2;const auto& entry=entries[middle];
+    double squared=0;for(int n=0;n<3;++n){double delta=point[n]-entry.xyz[n];squared+=delta*delta;}
+    if((squared<best||(squared==best&&entry.unit<result))&&eligible(entry.unit)){best=squared;result=entry.unit;}
+    double delta=point[axis]-entry.xyz[axis];int next=(axis+1)%3;
+    if(delta<0){search(first,middle,next,point,eligible,best,result);if(delta*delta<=best)search(middle+1,last,next,point,eligible,best,result);}
+    else {search(middle+1,last,next,point,eligible,best,result);if(delta*delta<=best)search(first,middle,next,point,eligible,best,result);}
+  }
+public:
+  void add(size_t unit,Point point){entries.push_back({coordinates(point),unit});}
+  void finish(){build(0,entries.size(),0);}
+  template<class Eligible> size_t nearest(Point point,const Eligible& eligible) const {
+    double best=std::numeric_limits<double>::infinity();size_t result=std::numeric_limits<size_t>::max();
+    search(0,entries.size(),0,coordinates(point),eligible,best,result);return result;
+  }
+};
+
 
 
 }
@@ -93,6 +131,20 @@ bool Simulation::orderUnitAttackAt(size_t index,Point target){
 void Simulation::combat(){
   for(auto& site:state.sites)site.missileCooldown=std::max(0.0,site.missileCooldown-simulationTickSeconds);
   if(!state.war&&state.engagements.empty())return;
+  // Classify each incursion once, rather than once per defending formation.
+  // Original AI DynamicDefence describes region-based invasion responses; its
+  // EnemyCheck/CriticalThreshold values are force ratios, not think intervals.
+  ThreatIndex landThreats,navalThreats;
+  if(state.war)for(size_t index=0;index<state.units.size();++index){
+    const auto& attacker=state.units[index];if(attacker.owner!=state.player||!ready(attacker))continue;
+    if(occupying(attacker.type)){
+      int r=attacker.region;bool threat=r>=0&&r<int(state.regions.size())&&state.regions[r].nation==state.enemy;
+      if(!threat)for(const auto& city:state.settlements)if(city.owner==state.enemy&&distanceKm(city.position,attacker.position)<30){threat=true;break;}
+      if(threat)landThreats.add(index,attacker.position);
+    }
+    if(navalUnit(attacker.type))for(const auto& region:state.regions)if(region.nation==state.enemy&&distanceKm(region.center,attacker.position)<180){navalThreats.add(index,attacker.position);break;}
+  }
+  landThreats.finish();navalThreats.finish();
   // Defenders react to actual incursions; orders never create damage remotely.
   for(auto& defender:state.units)if(state.war&&defender.owner==state.enemy&&ready(defender)&&occupying(defender.type)){
     Point destination=defender.position;
@@ -100,12 +152,10 @@ void Simulation::combat(){
     bool response=false,settlementObjective=false;
     const Unit* responseTarget=nullptr;
     int objectiveRegion=-1;
-    for(const auto& attacker:state.units)if(attacker.owner==state.player&&ready(attacker)&&occupying(attacker.type)){
-      int r=attacker.region;
-      bool threat=r>=0&&r<int(state.regions.size())&&state.regions[r].nation==state.enemy;
-      if(!threat)for(const auto& city:state.settlements)if(city.owner==state.enemy&&distanceKm(city.position,attacker.position)<30){threat=true;break;}
-      double d=distanceKm(defender.position,attacker.position);
-      if(threat&&d<best){best=d;destination=attacker.position;response=true;responseTarget=&attacker;}
+    size_t nearest=landThreats.nearest(defender.position,[](size_t){return true;});
+    if(nearest!=std::numeric_limits<size_t>::max()){
+      responseTarget=&state.units[nearest];destination=responseTarget->position;
+      best=distanceKm(defender.position,destination);response=true;
     }
     if(!response)for(const auto& city:state.settlements)if(city.region>=0&&city.region<int(state.regions.size())&&state.regions[city.region].nation==state.enemy&&city.owner!=state.enemy){
       double d=distanceKm(defender.position,city.position);
@@ -130,10 +180,8 @@ void Simulation::combat(){
   // Naval defenders protect home coast water only; they never pursue cities.
   for(auto& defender:state.units)if(state.war&&defender.owner==state.enemy&&ready(defender)&&navalUnit(defender.type)){
     const Unit* threat=nullptr;double best=std::numeric_limits<double>::max();
-    for(const auto& attacker:state.units)if(attacker.owner==state.player&&ready(attacker)&&navalUnit(attacker.type)&&engagementRange(defender,attacker)>0){
-      bool homeWater=false;for(const auto& region:state.regions)if(region.nation==state.enemy&&distanceKm(region.center,attacker.position)<180){homeWater=true;break;}
-      double d=distanceKm(defender.position,attacker.position);if(homeWater&&d<best){threat=&attacker;best=d;}
-    }
+    size_t nearest=navalThreats.nearest(defender.position,[&](size_t index){return engagementRange(defender,state.units[index])>0;});
+    if(nearest!=std::numeric_limits<size_t>::max()){threat=&state.units[nearest];best=distanceKm(defender.position,threat->position);}
     if(threat&&best>engagementRange(defender,*threat)*.85){if(distanceKm(defender.destination,threat->position)>5||!defender.moving)planUnitMovement(defender,threat->position);}
     else {defender.moving=false;defender.path.clear();defender.waypoints.clear();}
   }

@@ -107,6 +107,14 @@ int main(){try{
   check(withdrawn.state.units[1].moving,"defender pursues a live intrusion");
   withdrawn.state.units[0].health=0;withdrawn.tick();
   check(!withdrawn.state.units[1].moving&&withdrawn.state.units[1].waypoints.empty(),"defender clears stale pursuit when the intrusion disappears");
+  Simulation nearestResponse(w);campaign(nearestResponse);nearestResponse.state.war=true;
+  nearestResponse.state.units={formation(0,2,{.6,1}),formation(0,2,{1.5,1}),formation(1,3,{5,1})};
+  nearestResponse.tick();
+  check(distanceKm(nearestResponse.state.units[2].destination,{1.5,1})<1e-5,"defender chooses nearest eligible incursion rather than first indexed threat");
+  nearestResponse.state.units[1].health=0;nearestResponse.tick();
+  check(distanceKm(nearestResponse.state.units[2].destination,{.6,1})<1e-5,"response index immediately drops a destroyed nearest threat");
+  nearestResponse.state.units[0].position={-5,2};nearestResponse.state.units[0].region=0;nearestResponse.tick();
+  check(!nearestResponse.state.units[2].moving,"response index drops live troops withdrawn from enemy territory and cities");
   Simulation upgrades(w);campaign(upgrades);
   upgrades.state.units={formation(0,1,{-1,1}),formation(0,1,{-1,1},UnitType::Armour)};
   check(upgrades.visibleResearch(0)&&!upgrades.visibleResearch(5)&&!upgrades.visibleResearch(17),"locked technologies have no visible node");
@@ -145,10 +153,10 @@ int main(){try{
   check(crossing.orderUnitAt(1,{2,0})&&canEngage(UnitType::Destroyer,UnitType::Infantry),"destroyers move through water and carry coastal guns");
   Simulation mounts(islands);campaign(mounts,true);mounts.state.war=true;
   mounts.state.units={formation(0,1,{-2.9,0},UnitType::Destroyer),formation(1,1,{-2.8,0},UnitType::Destroyer),formation(1,1,{-2.85,.01},UnitType::Submarine),formation(1,1,{-3.01,0},UnitType::Infantry)};
-  check(mounts.engagementRange(mounts.state.units[0],mounts.state.units[2])==8&&mounts.engagementRange(mounts.state.units[0],mounts.state.units[1])==24,"baseline destroyer uses short-range depth charges and gun before guided weapon research");
+  check(mounts.engagementRange(mounts.state.units[0],mounts.state.units[2])==50&&mounts.engagementRange(mounts.state.units[0],mounts.state.units[1])==500,"baseline destroyer uses source depth charge and naval gun ranges before guided weapon research");
   mounts.state.completed[116]=mounts.state.completed[117]=true;
   check(mounts.unitWeapons(mounts.state.units[0]).size()==3,"destroyer has separate coastal, anti-ship and ASW mounts");
-  check(mounts.engagementRange(mounts.state.units[0],mounts.state.units[3])==24&&mounts.engagementRange(mounts.state.units[0],mounts.state.units[2])==32,"target-specific ranges never flatten a destroyer into its longest missile range");
+  check(mounts.engagementRange(mounts.state.units[0],mounts.state.units[3])==500&&mounts.engagementRange(mounts.state.units[0],mounts.state.units[2])==32,"target-specific ranges never flatten a destroyer into its longest missile range");
   mounts.tick();bool gun=false,missile=false,torpedo=false;for(const auto& shot:mounts.state.engagements)if(shot.attacker==0){gun|=shot.weaponId=="naval_gun";missile|=shot.weaponId=="anti_ship";torpedo|=shot.weaponId=="asw_torpedo";}
   check(gun&&missile&&torpedo,"independent mounts launch simultaneous projectiles against valid domains");
   check(mounts.state.units[0].weaponAmmo[0]==29&&mounts.state.units[0].weaponAmmo[1]==3&&mounts.state.units[0].weaponAmmo[2]==3,"each mount consumes exactly one round rather than multiplying DPS across targets");
@@ -176,14 +184,14 @@ int main(){try{
   check(atgm.canEngage(rifle,armour)&&!atgm.canEngage(rifle,foot),"researched ATGM adds useful armour range without extending rifle range against infantry");
   atgm.state.completed[119]=true;
   auto submarine=formation(0,1,{-.1,1},UnitType::Submarine);auto destroyer=formation(1,1,{-.2,1},UnitType::Destroyer);
-  check(atgm.engagementRange(submarine,destroyer)==40&&atgm.engagementRange(submarine,foot)==220,"submarine torpedoes and land-attack cruise missiles retain separate domains and ranges");
+  check(atgm.engagementRange(submarine,destroyer)==200&&atgm.engagementRange(submarine,foot)==650,"submarine torpedoes and land-attack cruise missiles retain separate domains and ranges");
   check(!canEngage(UnitType::Infantry,UnitType::Destroyer)&&!canEngage(UnitType::Destroyer,UnitType::Fighter),"invalid ground-to-naval and retired air engagements are rejected");
   check(int(UnitType::Destroyer)==5&&int(UnitType::Submarine)==6&&int(UnitType::MissileLauncher)==8,"appended naval platforms preserve saved unit IDs");
   auto cruiser=formation(0,1,{-.1,1},UnitType::Cruiser);auto ssgn=formation(0,1,{-.1,1},UnitType::MissileSubmarine);
   atgm.state.completed[116]=atgm.state.completed[117]=true;
   check(navalUnit(cruiser.type)&&targetDomain(ssgn.type)==TargetDomain::Submerged,"cruisers and missile submarines use ocean movement and correct target domains");
-  check(atgm.engagementRange(cruiser,foot)==480&&atgm.engagementRange(cruiser,destroyer)==280,"cruiser separates heavy land and anti-ship missile envelopes");
-  check(atgm.engagementRange(ssgn,foot)==650&&atgm.engagementRange(ssgn,destroyer)==28,"SSGN prioritises distant land strike over torpedo duelling");
+  check(atgm.engagementRange(cruiser,foot)==650&&atgm.engagementRange(cruiser,destroyer)==550,"cruiser separates heavy land and anti-ship missile envelopes");
+  check(atgm.engagementRange(ssgn,foot)==650&&atgm.engagementRange(ssgn,destroyer)==200,"SSGN prioritises distant land strike over torpedo duelling");
   auto hidden=formation(1,1,{.3,1},UnitType::Submarine);
   check(!atgm.detectsSubmarine(cruiser,hidden),"cruiser cannot acquire submarine beyond its limited sonar coverage");
   hidden.position={-.05,1};check(atgm.detectsSubmarine(cruiser,hidden)&&!atgm.detectsSubmarine(rifle,hidden),"sonar acquires nearby submarines while ground units have no underwater detection");

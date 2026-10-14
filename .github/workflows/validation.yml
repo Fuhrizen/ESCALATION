@@ -54,7 +54,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends ninja-build libegl1 libgl1-mesa-dri python3-pil
       - name: Validate package orchestration
         if: runner.os == 'Linux'
-        run: python3 tests/test_build_pipeline.py
+        run: |
+          python3 tests/test_build_pipeline.py
+          python3 tests/import_units_tests.py
       - name: Configure Linux client and EGL tests
         if: runner.os == 'Linux'
         run: |
