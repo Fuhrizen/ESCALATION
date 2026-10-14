@@ -121,6 +121,7 @@ struct App {
   int selectedNation=-1,selectedRegion=-1,selectedSite=-1,selectedSettlement=-1,selectedWorldCity=-1,selectedUnit=-1,construction=-1,readyUnitPlacement=-1,focus=5,speed=1;
   bool paused=true,regionOpen=false,unitOpen=false,nationOpen=false,commandMode=false,showRanges=true,autoResearch=false,leftStarted=false,rightDragged=false,treeFocus=false;
   int attackMode=0; // 1: unit point attack, 2: conventional silo, 3: confirmed nuclear silo
+  double noticeRemaining=0;
   double accumulator=0;
   Point pointer,leftStart,popup;
   int hoverUnit=-1,hoverSite=-1;
@@ -155,7 +156,7 @@ struct App {
   void cancelGestures(){leftStarted=rightStarted=rightDragged=false;panButton=-1;leftGesture.cancel();rightGesture.cancel();cameraMotion.reset();}
   void openPause(){wasPaused=paused;paused=true;pauseOpen=true;cancelGestures();}
   void notice(const std::string& text){
-    message=text;
+    message=text;noticeRemaining=6;
   }
   void clearSelection(){
     selectedRegion=selectedSite=selectedSettlement=selectedWorldCity=selectedUnit=construction=readyUnitPlacement=-1;
@@ -562,17 +563,18 @@ struct App {
         w/2-180,70
       },ImGuiCond_Appearing);
       ImGui::Begin("Campaign result",nullptr,ImGuiWindowFlags_AlwaysAutoResize);
-      wrapped(sim.state.victory?"Victory: rival territory secured":sim.state.nuclearUsed?"Campaign ended in mutual destruction":"Defeat: all home regions have been captured");
+      wrapped(sim.state.victory?"Victory: rival territory secured":"Defeat: all home regions have been captured");
       ImGui::End();
     }
     pauseMenu(w,h);
   }
   void frame(float w,float h,double dt){
+    noticeRemaining=std::max(0.0,noticeRemaining-dt);
     if(autoUiScale)uiScale=effectiveUiScale(w,h);
     ImGui::GetIO().FontGlobalScale=uiScale;
     static const ImGuiStyle baseStyle=ImGui::GetStyle();ImGui::GetStyle()=baseStyle;ImGui::GetStyle().ScaleAllSizes(uiScale);
     camera.x=0;
-    camera.y=screen==Game?hudHeight():60;
+    camera.y=screen==Game?0:60;
     camera.borders=showBorders;
     camera.width=w;
     camera.height=h-camera.y-(screen==Game?commandHeight():58);
@@ -764,6 +766,13 @@ int main(int argc,char** argv){
       if(smoke&&frame==36){
         for(int tick=0;tick<500;++tick){bool hit=false;Point impact{};for(const auto& shot:app.sim.state.engagements)if(shot.ballistic&&shot.sourceSite==app.selectedSite&&shot.impactSeconds>0){hit=true;impact=shot.target;break;}if(hit){app.center(impact);app.camera.zoom=45;break;}app.sim.tick();}
       }
+      if(smoke&&frame==38){
+        app.clearSelection();app.sim.start(app.world.find("FRA"));app.panel=App::None;app.camera.globe=false;
+        app.selectedUnit=0;app.selectedUnits={0};Point origin=app.sim.state.units[0].position;Point target=origin;
+        for(const auto& city:app.sim.state.settlements)if(city.owner==app.sim.state.player&&distanceKm(origin,city.position)>150&&distanceKm(origin,city.position)<400){if(app.sim.orderUnitAt(0,city.position)){target=city.position;break;}}
+        for(const auto& city:app.sim.state.settlements)if(city.owner==app.sim.state.player&&distanceKm(target,city.position)>60&&distanceKm(target,city.position)<200){if(app.sim.orderUnitAt(0,city.position,true))break;}
+        app.center({(origin.x+target.x)*.5,(origin.y+target.y)*.5});app.camera.zoom=20;
+      }
       app.windowFocused=smoke||glfwGetWindowAttrib(window,GLFW_FOCUSED);
       app.frame(float(w),float(h),smoke?0.016:dt);
       ImGui::Render();
@@ -775,7 +784,7 @@ int main(int argc,char** argv){
         if(gl::GetError()!=0)throw std::runtime_error("OpenGL error during smoke render");
       }
       if(!smoke)glfwSwapBuffers(window);
-      if(smoke&&++frame>=38)break;
+      if(smoke&&++frame>=40)break;
     }
     if(!smoke&&app.sim.state.player>=0)app.save(true);
     app.saveSettings();

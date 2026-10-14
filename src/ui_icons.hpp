@@ -1,4 +1,6 @@
 #pragma once
+#include <cmath>
+#include <string>
 // Original, shared geometric command icons. No glyph-font or external artwork.
 namespace command_icons {
 inline void line(ImDrawList* d,ImVec2 c,float s,ImVec2 a,ImVec2 b,ImU32 color,float w=1.7f){d->AddLine({c.x+a.x*s,c.y+a.y*s},{c.x+b.x*s,c.y+b.y*s},color,w);}
@@ -29,6 +31,16 @@ inline void icon(ImDrawList* d,ImVec2 c,float size,int kind,ImU32 color){
  else if(kind==30){l(-.8,.7,-.8,-.4);l(-.8,-.4,0,-.8);l(0,-.8,.8,-.4);l(.8,-.4,.8,.7);l(-.8,.7,.8,.7);l(-.45,-.1,.45,-.1);l(-.45,.2,.45,.2);}
  else if(kind==32){circle(0,0,.8);l(0,0,.55,-.55);l(-.55,.55,.55,-.55);circle(0,0,.15);}
  else {l(-.7,-.7,.7,.7);l(.7,-.7,-.7,.7);circle(0,0,.85);}
+}
+inline void weapon(ImDrawList* d,ImVec2 c,float size,const std::string& id,ImU32 color){
+ float s=size*.5f;auto l=[&](float ax,float ay,float bx,float by){line(d,c,s,{ax,ay},{bx,by},color,2.f);};
+ if(id=="rifle"||id=="carbine"||id=="coax"||id=="machine_gun"){
+   l(-.85,.25,.9,-.15);l(-.85,.25,-.7,.55);l(-.7,.55,-.35,.2);l(-.4,.15,-.25,.6);l(-.25,.6,-.05,.55);l(-.05,.55,-.15,.08);l(-.25,-.02,.3,-.15);l(.3,-.15,.38,-.35);l(.5,-.14,.5,-.35);
+ }else if(id=="torpedo"||id=="asw_torpedo"||id=="sub_torpedo"||id=="depth_charge"){
+   d->AddEllipse(c,{.85f*s,.21f*s},color,0,24,2.f);l(-.68,-.14,-.93,-.4);l(-.68,.14,-.93,.4);l(.68,-.15,.68,.15);
+ }else if(id=="howitzer"||id=="tank_gun"||id=="naval_gun"){
+   l(-.65,.18,.3,-.25);l(-.5,.4,.46,-.03);l(.3,-.25,.9,-.4);l(.46,-.03,.97,-.3);d->AddCircle({c.x-.25f*s,c.y+.4f*s},.27f*s,color,16,2.f);l(-.1,.4,.75,.8);
+ }else icon(d,c,size,8,color);
 }
 inline void badge(ImDrawList* d,ImVec2 c,float size,int kind,ImU32 color,bool selected=false,bool hostile=false){
  if((kind>=3&&kind<=4)||kind==31)return;

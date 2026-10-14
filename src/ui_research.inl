@@ -44,7 +44,8 @@
     auto& s=sim.state;
     static char search[96]{};
     const float rail=pageSafeLeft(),top=hudHeight();
-    const float nav=std::clamp(w*.148f,190.0f*uiScale,246.0f*uiScale);
+    const float nav=std::clamp(w*.17f,180.0f*uiScale,240.0f*uiScale);
+    const float queueWidth=std::clamp(w*.155f,170.f*uiScale,230.f*uiScale);
     const ImU32 cyan=IM_COL32(43,188,246,255), pale=IM_COL32(217,234,247,255),soft=IM_COL32(134,176,204,255),green=IM_COL32(78,216,183,255);
     const int categories[]={0,4,1,2,5,6,7,8};
     const char* labels[]={"Ground forces","Missiles","Defence","Sensors","Industry","Science","Logistics","Navy"};
@@ -57,13 +58,13 @@
     bool fit=treeFocus||researchField!=focus,centerCurrent=false;
     researchField=focus;treeFocus=false;
     ImGui::SetNextWindowPos({rail,top});ImGui::SetNextWindowSize({w-rail,h-top});
-    ImGui::PushStyleColor(ImGuiCol_WindowBg,{.025f,.061f,.094f,1});
+    ImGui::PushStyleColor(ImGuiCol_WindowBg,{.008f,.025f,.044f,.95f});
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});
     ImGui::Begin("##researchpage",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoBringToFrontOnFocus);
-    ImGui::BeginChild("##researchnav",{nav,std::max(210.0f,h-top-navigationReserveHeight())},ImGuiChildFlags_None);
+    ImGui::BeginChild("##researchnav",{nav,std::max(210.0f,h-top-24.f*uiScale)},ImGuiChildFlags_None);
     auto* nd=ImGui::GetWindowDrawList();auto np=ImGui::GetWindowPos();
-    nd->AddRectFilled(np,{np.x+nav,np.y+h-top},IM_COL32(8,23,36,255));
-    nd->AddLine({np.x+nav-1,np.y},{np.x+nav-1,h},IM_COL32(44,93,124,255));
+    nd->AddRectFilled(np,{np.x+nav,np.y+h-top},IM_COL32(4,15,28,215));
+    nd->AddLine({np.x+nav-1,np.y},{np.x+nav-1,h},IM_COL32(32,88,109,180));
     ImGui::SetCursorPos({20,24});ImGui::TextColored({.43f,.68f,.84f,1},"RESEARCH");
     for(int k=0;k<8;++k){
       ImGui::SetCursorPos({8,58.0f+k*54+((focus==0||focus==3)&&k>0?26.0f:0.0f)});ImGui::PushID(k);
@@ -77,15 +78,15 @@
     }
     if(focus==0||focus==3){ImGui::SetCursorPos({36,110});if(ImGui::Selectable("Special operations",focus==3,0,{nav-54,26})){focus=3;researchSelected=-1;search[0]=0;fit=true;researchField=focus;}}
     ImGui::EndChild();ImGui::SameLine(0,0);
-    ImGui::BeginChild("##researchworkspace",{0,0},ImGuiChildFlags_None,ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::BeginChild("##researchworkspace",{w-rail-nav-queueWidth,0},ImGuiChildFlags_None,ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
     ImGui::SetCursorPos({26,23});if(titleFont)ImGui::PushFont(titleFont);ImGui::SetWindowFontScale(1.65f);ImGui::TextColored({.89f,.95f,.99f,1},"%s",categoryName());ImGui::SetWindowFontScale(1);if(titleFont)ImGui::PopFont();
-    ImGui::SetCursorPos({27,67});ImGui::TextColored({.51f,.71f,.85f,1},"Shared foundations. Independent capabilities.");
+    ImGui::SetCursorPos({27,67});ImGui::TextColored({.51f,.71f,.85f,1},"REVEALED TECHNOLOGIES");
     ImGui::SetCursorPos({27,102});if(button("Fit"))fit=true;ImGui::SameLine();if(button("Current")){for(const auto& job:s.research)if(visible(job.tech)&&belongs(job.tech)){researchSelected=job.tech;break;}fit=true;centerCurrent=true;}ImGui::SameLine();
     ImGui::SetNextItemWidth(210);ImGui::InputTextWithHint("##researchsearch","Search revealed technology",search,sizeof(search));ImGui::SameLine();ImGui::Checkbox("Auto queue",&autoResearch);
     ImGui::SetCursorPos({0,147});
     ImGui::BeginChild("##researchcanvas",{0,-39},ImGuiChildFlags_None,ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
     auto cp=ImGui::GetWindowPos();auto size=ImGui::GetWindowSize();auto* draw=ImGui::GetWindowDrawList();
-    const float cardW=244,cardH=132,stepX=328,stepY=152;
+    const float cardW=196,cardH=110,stepX=260,stepY=135;
     const int count=int(sim.techs.size());
     std::vector<int> depth(count,0),parent(count,-1),members;
     std::vector<std::vector<int>> children(count);
@@ -119,12 +120,12 @@
     const float z=researchZoom,nw=cardW*z,nh=cardH*z;
     auto screenPos=[&](int id){auto p=position(id);return ImVec2{cp.x+researchPan.x+p.x*z,cp.y+researchPan.y+p.y*z};};
     draw->PushClipRect(cp,{cp.x+size.x,cp.y+size.y},true);
-    const float grid=38*z;for(float x=std::fmod(researchPan.x,grid);x<size.x;x+=grid)draw->AddLine({cp.x+x,cp.y},{cp.x+x,cp.y+size.y},IM_COL32(21,49,68,110));for(float y=std::fmod(researchPan.y,grid);y<size.y;y+=grid)draw->AddLine({cp.x,cp.y+y},{cp.x+size.x,cp.y+y},IM_COL32(21,49,68,110));
+    const float grid=38*z;for(float x=std::fmod(researchPan.x,grid);x<size.x;x+=grid)draw->AddLine({cp.x+x,cp.y},{cp.x+x,cp.y+size.y},IM_COL32(21,49,68,30));for(float y=std::fmod(researchPan.y,grid);y<size.y;y+=grid)draw->AddLine({cp.x,cp.y+y},{cp.x+size.x,cp.y+y},IM_COL32(21,49,68,30));
     for(int id:shown)for(int p:sim.techs[id].prerequisites){if(!displayed(p))continue;auto a=screenPos(p),b=screenPos(id);a={a.x+nw,a.y+nh*.5f};b={b.x,b.y+nh*.5f};float mid=(a.x+b.x)*.5f;ImU32 col=s.completed[p]?IM_COL32(67,193,234,220):IM_COL32(103,149,175,180);draw->AddBezierCubic(a,{mid,a.y},{mid,b.y},b,col,2.2f);draw->AddLine({b.x-8,b.y-5},b,col,2);draw->AddLine({b.x-8,b.y+5},b,col,2);}
     auto text=[&](ImVec2 p,ImU32 color,const char* value,float wrap=0){draw->AddText(ImGui::GetFont(),std::max(15.0f,ImGui::GetFontSize()*z),p,color,value,nullptr,wrap);};
     for(int id:shown){auto a=screenPos(id);ImVec2 b{a.x+nw,a.y+nh};if(b.x<cp.x||a.x>cp.x+size.x||b.y<cp.y||a.y>cp.y+size.y)continue;const auto& tech=sim.techs[id];int qi=queueIndex(id);bool done=s.completed[id];ImU32 edge=done?green:qi>=0?IM_COL32(244,190,98,255):cyan;
       ImGui::SetCursorScreenPos(a);ImGui::PushID(id);ImGui::InvisibleButton("technology",{nw,nh});bool over=ImGui::IsItemHovered();if(ImGui::IsItemClicked())researchSelected=id;
-      draw->AddRectFilled(a,b,over?IM_COL32(18,48,72,255):IM_COL32(13,35,54,255),5);draw->AddRectFilled({a.x+1,b.y-32*z},{b.x-1,b.y-1},done?IM_COL32(13,54,58,255):IM_COL32(14,44,66,255),4);draw->AddRect(a,b,edge,5,0,id==researchSelected?2.8f:1.2f);
+      draw->AddRectFilled(a,b,over?IM_COL32(18,48,72,255):IM_COL32(7,28,40,228),1);draw->AddRectFilled({a.x+1,b.y-32*z},{b.x-1,b.y-1},done?IM_COL32(13,54,58,255):IM_COL32(14,44,66,255),4);draw->AddRect(a,b,edge,1,0,id==researchSelected?2.8f:1.2f);
       std::string iconName=tech.name;std::transform(iconName.begin(),iconName.end(),iconName.begin(),[](unsigned char c){return char(std::tolower(c));});
       int kind=focus==8?14:focus==4?9:focus==1?10:focus==2?4:focus==5?5:focus==6?6:focus==7?7:focus==3?13:8;
       if(iconName.find("foundation")!=std::string::npos&&focus==0)kind=0;
@@ -134,10 +135,10 @@
       if(iconName.find("medicine")!=std::string::npos)kind=11;
       if(iconName.find("support weapons")!=std::string::npos||iconName.find("artillery")!=std::string::npos||iconName.find("guns")!=std::string::npos)kind=12;
       if(iconName.find("manpads")!=std::string::npos||iconName.find("guided missiles")!=std::string::npos||iconName.find("anti-tank")!=std::string::npos)kind=9;
-      researchIcon(draw,{a.x+29*z,a.y+32*z},32*z,kind,pale);
+      researchIcon(draw,{a.x+29*z,a.y+31*z},40*z,kind,pale);
       if(titleFont)draw->AddText(titleFont,std::max(15.0f,ImGui::GetFontSize()*z),{a.x+55*z,a.y+13*z},pale,tech.name.c_str(),nullptr,nw-67*z);else text({a.x+55*z,a.y+13*z},pale,tech.name.c_str(),nw-67*z);
       std::string summary=tech.effect;if(summary.size()>48)summary=summary.substr(0,45)+"...";
-      draw->PushClipRect({a.x+10*z,a.y+59*z},{b.x-10*z,b.y-34*z},true);text({a.x+12*z,a.y+59*z},soft,summary.c_str(),nw-24*z);draw->PopClipRect();
+
       const std::string status=done?"Complete":qi==0?"Researching":qi>0?"Queued #"+std::to_string(qi+1):"Available";
       if(done){draw->AddCircleFilled({a.x+17*z,b.y-16*z},8*z,green);draw->AddLine({a.x+13*z,b.y-16*z},{a.x+16*z,b.y-13*z},IM_COL32(8,38,43,255),2);draw->AddLine({a.x+16*z,b.y-13*z},{a.x+21*z,b.y-19*z},IM_COL32(8,38,43,255),2);}else researchIcon(draw,{a.x+17*z,b.y-16*z},15*z,6,edge);
       text({a.x+33*z,b.y-26*z},edge,status.c_str());
@@ -147,12 +148,21 @@
     if(shown.empty())draw->AddText({cp.x+30,cp.y+40},soft,"No revealed technology matches your search.");
     draw->PopClipRect();ImGui::EndChild();
     ImGui::SetCursorPos({25,ImGui::GetWindowHeight()-29});ImGui::TextColored({.43f,.63f,.77f,1},"Drag to pan  /  Scroll to zoom  /  Esc to return");
-    ImGui::EndChild();ImGui::End();ImGui::PopStyleVar();ImGui::PopStyleColor();
+    ImGui::EndChild();ImGui::SameLine(0,0);
+    ImGui::BeginChild("##nationalqueues",{queueWidth,0},ImGuiChildFlags_None);
+    ImGui::TextColored({.68f,.81f,.85f,1},"SCIENCE / PRODUCTION");ImGui::Separator();if(button("Exit research"))panel=None;ImGui::Spacing();
+    ImGui::BeginChild("##queuelist",{0,-192*uiScale},ImGuiChildFlags_None);
+    for(size_t q=0;q<s.research.size();++q){auto& job=s.research[q];if(!visible(job.tech))continue;ImGui::PushID(int(q)+7000);auto p=ImGui::GetCursorScreenPos();researchIcon(ImGui::GetWindowDrawList(),{p.x+22*uiScale,p.y+24*uiScale},34*uiScale,6,IM_COL32(86,198,217,255));ImGui::Dummy({46*uiScale,46*uiScale});ImGui::SameLine();ImGui::BeginGroup();ImGui::TextWrapped("%s",sim.techs[job.tech].name.c_str());auto eta=sim.researchETA(job.tech);ImGui::TextColored(muted,"%s",std::isfinite(eta)?durationText(eta).c_str():"Paused");ImGui::EndGroup();ImGui::ProgressBar(float(job.progress/std::max(.01,job.cost)),{-1,5*uiScale},"");if(ImGui::IsItemClicked())researchSelected=job.tech;ImGui::PopID();ImGui::Spacing();}
+    if(s.research.empty())ImGui::TextColored(muted,"No research queued");ImGui::Separator();
+    for(size_t q=0;q<s.buildingQueue.size();++q){auto& job=s.buildingQueue[q];ImGui::TextWrapped("%s",facilityNames[int(job.type)]);ImGui::ProgressBar(float(job.progress/std::max(.01,job.total)),{-1,5*uiScale},"");ImGui::TextColored(muted,"%s",durationText(sim.buildingETA(q)).c_str());}
+    for(size_t q=0;q<s.units.size();++q){auto& unit=s.units[q];if(unit.owner!=s.player||unit.remaining<=0)continue;ImGui::TextWrapped("%s",unitNames[int(unit.type)]);ImGui::TextColored(muted,"%s",durationText(sim.unitETA(q)).c_str());ImGui::Separator();}
+    ImGui::EndChild();ImGui::EndChild();
+    ImGui::End();ImGui::PopStyleVar();ImGui::PopStyleColor();
     // Compact, anchored details. No unrevealed prerequisite names can enter this panel.
     if(visible(researchSelected)&&belongs(researchSelected)){
       const auto& tech=sim.techs[researchSelected];int qi=queueIndex(researchSelected);
-      float dw=std::min(352.0f*uiScale,w-rail-nav-32),dh=(s.completed[researchSelected]?180.0f:qi>=0?228.0f:276.0f)*uiScale;
-      ImGui::SetNextWindowPos({w-dw-18,h-dh-49});ImGui::SetNextWindowSize({dw,dh});
+      float dw=std::min(352.0f*uiScale,w-rail-nav-queueWidth-32),dh=(s.completed[researchSelected]?180.0f:qi>=0?228.0f:276.0f)*uiScale;
+      ImGui::SetNextWindowPos({w-queueWidth-dw-18,h-dh-49});ImGui::SetNextWindowSize({dw,dh});
       ImGui::PushStyleColor(ImGuiCol_WindowBg,{.025f,.07f,.11f,.99f});ImGui::PushStyleColor(ImGuiCol_Border,{.21f,.51f,.69f,1});
       ImGui::Begin("##researchdetails",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings);
       if(titleFont)ImGui::PushFont(titleFont);ImGui::TextWrapped("%s",tech.name.c_str());if(titleFont)ImGui::PopFont();ImGui::Spacing();wrapped(tech.effect);

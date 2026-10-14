@@ -227,7 +227,7 @@
   }
   void mapLabels(){
     if(screen==Menu||(screen==Game&&panel!=None))return;
-    auto* draw=ImGui::GetBackgroundDrawList();draw->PushClipRect({camera.x,camera.y},{camera.x+camera.width,camera.y+camera.height},true);
+    auto* draw=ImGui::GetBackgroundDrawList();draw->PushClipRect({camera.x,screen==Game?std::max(camera.y,hudHeight()):camera.y},{camera.x+camera.width,camera.y+camera.height},true);
     riversOverlay(draw);roadsOverlay(draw);
     if(showCities&&camera.zoom>5){for(size_t n=0;n<world.cities.size();++n){const auto& city=world.cities[n];if(camera.zoom<16&&city.population<500000)continue;bool visible=false;auto p=camera.project(city.position,&visible);if(!visible||p.x<camera.x-40||p.x>camera.x+camera.width+40||p.y<camera.y-40||p.y>camera.y+camera.height+60)continue;cityMesh(draw,p,city.population,IM_COL32(170,197,188,255),selectedWorldCity==int(n));if(camera.zoom>40&&city.population>250000)label(draw,p,city.name,IM_COL32(182,207,194,215));}}
     landmarksOverlay(draw);
@@ -255,7 +255,9 @@
           if(clear){label(draw,p,city.name,c);labels.push_back(p);}
         }
       }
-      for(size_t n=0;n<s.sites.size();++n){const auto& site=s.sites[n];if(site.destroyed||site.type==Facility::Airbase)continue;bool visible=false;auto p=camera.project(site.position,&visible);if(!visible)continue;
+      for(size_t n=0;n<s.sites.size();++n){const auto& site=s.sites[n];if(site.destroyed||site.type==Facility::Airbase)continue;
+        if(showRanges&&site.type==Facility::Silo&&(selectedSite==int(n)||hoverSite==int(n))){geographicalRing(draw,site.position,sim.siteMissileRange(n),IM_COL32(117,199,240,160));geographicalRing(draw,site.position,25,IM_COL32(117,199,240,160),true);}
+        bool visible=false;auto p=camera.project(site.position,&visible);if(!visible)continue;
         bool selected=selectedSite==int(n),hovered=hoverSite==int(n);ImU32 color=s.regions[site.region].owner==s.player?IM_COL32(102,178,249,255):IM_COL32(255,135,78,255);if(!site.enabled)color=IM_COL32(128,145,154,255);
         command_icons::badge(draw,vec(p),16,20+int(site.type),color,selected||hovered);
         if(showRanges&&(selected||hovered)){

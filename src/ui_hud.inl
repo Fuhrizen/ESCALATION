@@ -1,11 +1,11 @@
 // Included inside App; approved compact command header and permanent ready rail.
-  float hudHeight() const{return (ImGui::GetIO().DisplaySize.x/uiScale<1120.f?104.f:56.f)*uiScale;}
+  float hudHeight() const{return 44.f*uiScale;}
   float commandHeight() const{return 0.f;}
-  float pageSafeLeft() const{return std::max(readyRailWidth(),190.f*uiScale);}
+  float pageSafeLeft() const{return readyRailWidth();}
   float managementWidth() const{return pageSafeLeft();}
-  float inspectorWidth(float w) const{return std::min((w/uiScale<900.f?420.f:780.f)*uiScale,w-readyRailWidth()-24.f*uiScale);}
-  float inspectorHeight(float h) const{return std::min(260.f*uiScale,h-hudHeight()-20.f*uiScale);}
-  float navigationReserveHeight() const{return 198.f*uiScale;}
+  float inspectorWidth(float w) const{return std::min(360.f*uiScale,w-224.f*uiScale);}
+  float inspectorHeight(float h) const{return std::min(410.f*uiScale,h-hudHeight()-24.f*uiScale);}
+  float navigationReserveHeight() const{return 430.f*uiScale;}
   int readyItemKinds() const {int count=0;for(int id=0;id<16;++id)if(sim.state.buildingInventory[id]>0)++count;for(int id=0;id<9;++id)if(sim.readyUnitCount(UnitType(id))>0)++count;return count;}
   float readyRailWidth(float h) const {int rows=std::max(1,int((h-hudHeight()-navigationReserveHeight()-16.f*uiScale)/(64.f*uiScale)));return 64.f*uiScale*std::max(1,(readyItemKinds()+rows-1)/rows);}
   float readyRailWidth() const{return readyRailWidth(ImGui::GetIO().DisplaySize.y);}
@@ -14,8 +14,8 @@
     if(screen!=Game)return false;
     if(panel!=None)return true;
     if(p.x<readyRailWidth(h))return true;
-    if(p.x<190.f*uiScale&&p.y>h-navigationReserveHeight())return true;
-    if(selectedUnit>=0||selectedSite>=0||selectedRegion>=0||selectedSettlement>=0||selectedWorldCity>=0){float width=inspectorWidth(w),height=inspectorHeight(h);if(p.x>w-width-12.f*uiScale&&p.y>h-height-12.f*uiScale)return true;}
+    if(p.x>w-390.f*uiScale&&p.y>h-182.f*uiScale)return true;
+    if(selectedUnit>=0||selectedSite>=0||selectedRegion>=0||selectedSettlement>=0||selectedWorldCity>=0){float width=inspectorWidth(w),height=inspectorHeight(h);if(p.x<width+12.f*uiScale&&p.y>h-height-24.f*uiScale)return true;}
     return false;
   }
   float effectiveUiScale(float w,float h) const{
@@ -47,27 +47,32 @@
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0.f);
     ImGui::Begin("Ready rail",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse|ImGuiWindowFlags_NoBringToFrontOnFocus);
     ImGui::PopStyleVar();
-    int index=0;auto item=[&](int kind,int count,const char* name,bool building,int id){int col=index/rows,row=index%rows;++index;ImGui::PushID(kind+100);ImGui::SetCursorPos({4.f*s+col*64.f*s,12.f*s+row*cell});auto p=ImGui::GetCursorScreenPos();bool active=building?construction==id:readyUnitPlacement==id;ImGui::InvisibleButton("Deploy ready item",{56.f*s,56.f*s});bool hover=ImGui::IsItemHovered();auto*d=ImGui::GetWindowDrawList();d->AddRectFilled(p,{p.x+56.f*s,p.y+56.f*s},active?IM_COL32(12,65,118,255):IM_COL32(4,22,44,255),4.f*s);d->AddRect(p,{p.x+56.f*s,p.y+56.f*s},active||hover?IM_COL32(72,167,255,255):IM_COL32(90,121,161,255),4.f*s,0,active?3.f:1.4f);command_icons::icon(d,{p.x+28.f*s,p.y+29.f*s},34.f*s,kind,IM_COL32(226,239,255,255));auto qty=std::to_string(count);auto sz=ImGui::CalcTextSize(qty.c_str());float badge=std::max(11.f*s,sz.x*.5f+3.f*s);ImVec2 counter{p.x+56.f*s-badge,p.y+std::max(5.f*s,badge-8.f*s)};d->AddCircleFilled(counter,badge,IM_COL32(44,143,249,255));d->AddText({counter.x-sz.x*.5f,counter.y-sz.y*.5f},IM_COL32(255,255,255,255),qty.c_str());if(hover){ImGui::BeginTooltip();ImGui::Text("%s · %d ready",name,count);ImGui::TextUnformatted(building?"Click to place on controlled land":"Click to deploy on controlled land");ImGui::EndTooltip();}if(ImGui::IsItemClicked()){construction=building?id:-1;readyUnitPlacement=building?-1:id;panel=None;commandMode=false;notice(std::string("Choose controlled land to ")+(building?"place ":"deploy ")+name);}ImGui::PopID();};
+    int index=0;auto item=[&](int kind,int count,const char* name,bool building,int id){int col=index/rows,row=index%rows;++index;ImGui::PushID(kind+100);ImGui::SetCursorPos({4.f*s+col*64.f*s,12.f*s+row*cell});auto p=ImGui::GetCursorScreenPos();bool active=building?construction==id:readyUnitPlacement==id;ImGui::InvisibleButton("Deploy ready item",{56.f*s,56.f*s});bool hover=ImGui::IsItemHovered();auto*d=ImGui::GetWindowDrawList();ImVec2 hex[6];for(int j=0;j<6;++j){float a=3.14159265f*j/3.f;hex[j]={p.x+28.f*s+27.f*s*std::cos(a),p.y+28.f*s+27.f*s*std::sin(a)};}d->AddConvexPolyFilled(hex,6,active?IM_COL32(12,65,88,255):IM_COL32(4,22,34,225));d->AddPolyline(hex,6,active||hover?IM_COL32(72,217,239,255):IM_COL32(59,135,157,210),ImDrawFlags_Closed,active?3.f:1.4f);command_icons::icon(d,{p.x+28.f*s,p.y+29.f*s},34.f*s,kind,IM_COL32(226,239,255,255));auto qty=std::to_string(count);auto sz=ImGui::CalcTextSize(qty.c_str());float badge=std::max(11.f*s,sz.x*.5f+3.f*s);ImVec2 counter{p.x+56.f*s-badge,p.y+std::max(5.f*s,badge-8.f*s)};d->AddCircleFilled(counter,badge,IM_COL32(44,143,249,255));d->AddText({counter.x-sz.x*.5f,counter.y-sz.y*.5f},IM_COL32(255,255,255,255),qty.c_str());if(hover){ImGui::BeginTooltip();ImGui::Text("%s · %d ready",name,count);ImGui::TextUnformatted(building?(id==int(Facility::Shipyard)?"Click to place on controlled coast":"Click to place on controlled land"):(navalUnit(UnitType(id))?"Click to deploy in friendly coastal waters near a shipyard":"Click to deploy on controlled land"));ImGui::EndTooltip();}if(ImGui::IsItemClicked()){construction=building?id:-1;readyUnitPlacement=building?-1:id;panel=None;commandMode=false;notice(std::string(!building&&navalUnit(UnitType(id))?"Choose friendly coastal waters near a shipyard to deploy ":building&&id==int(Facility::Shipyard)?"Choose controlled coast to place ":building?"Choose controlled land to place ":"Choose controlled land to deploy ")+name);}ImGui::PopID();};
     for(int id=0;id<9;++id){int count=sim.readyUnitCount(UnitType(id));if(count)item(id,count,unitNames[id],false,id);}for(int id=0;id<16;++id)if(sim.state.buildingInventory[id]>0)item(20+id,sim.state.buildingInventory[id],facilityNames[id],true,id);
     ImGui::End();ImGui::PopStyleColor();ImGui::PopStyleVar();
   }
   void navigation(float h){
-    float s=uiScale;ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0.f);ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(0,0,0,0));
-    ImGui::SetNextWindowPos({10.f*s,h-188.f*s});ImGui::SetNextWindowSize({180.f*s,178.f*s});ImGui::Begin("Command navigation",nullptr,ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoResize|ImGuiWindowFlags_NoCollapse|ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar|ImGuiWindowFlags_NoScrollWithMouse);
+    float s=uiScale,w=ImGui::GetIO().DisplaySize.x;auto*d=ImGui::GetForegroundDrawList();
+    ImGui::SetNextWindowPos({w-390*s,h-180*s});ImGui::SetNextWindowSize({390*s,180*s});
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{0,0});ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0.f);
+    ImGui::Begin("Command navigation",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar);
     const char* names[]={"Research","Production","Forces","Log"};const Panel pages[]={Research,Build,Forces,Log};const int icons[]={26,24,0,30};
-    for(int i=0;i<4;++i){ImGui::PushID(i);ImGui::SetCursorPos({float(i%2)*90.f*s,float(i/2)*90.f*s});auto p=ImGui::GetCursorScreenPos();ImGui::InvisibleButton(names[i],{84.f*s,84.f*s});bool hover=ImGui::IsItemHovered(),active=panel==pages[i];auto*d=ImGui::GetWindowDrawList();ImVec2 c{p.x+42.f*s,p.y+42.f*s};d->AddCircleFilled(c,41.f*s,IM_COL32(4,20,42,247),48);d->AddCircle(c,41.f*s,active||hover?IM_COL32(72,169,255,255):IM_COL32(102,137,188,255),48,active?3.f:2.f);if(i==2){for(int j=-1;j<=1;++j){float px=c.x+j*11.f*s,py=c.y-11.f*s+(j==0?-3.f*s:0);d->AddCircleFilled({px,py},5.f*s,IM_COL32(234,242,255,255));d->AddRectFilled({px-6.f*s,py+7.f*s},{px+6.f*s,py+17.f*s},IM_COL32(234,242,255,255),4.f*s);}}else if(i==3){d->AddRectFilled({c.x-11.f*s,c.y-24.f*s},{c.x+11.f*s,c.y+7.f*s},IM_COL32(234,242,255,255),2.f*s);for(int j=0;j<4;++j)d->AddLine({c.x-6.f*s,c.y-18.f*s+j*5.f*s},{c.x+6.f*s,c.y-18.f*s+j*5.f*s},IM_COL32(4,20,42,255),2.f*s);}else command_icons::icon(d,{c.x,c.y-7.f*s},30.f*s,icons[i],IM_COL32(234,242,255,255));auto size=ImGui::CalcTextSize(names[i]);d->AddText({c.x-size.x*.5f,c.y+17.f*s},IM_COL32(240,246,255,255),names[i]);if(ImGui::IsItemClicked())toggle(pages[i]);ImGui::PopID();}
-    ImGui::End();ImGui::PopStyleColor();ImGui::PopStyleVar(2);
+    for(int i=0;i<4;++i){ImGui::PushID(i);ImGui::SetCursorPos({i*49.f*s,120*s});auto p=ImGui::GetCursorScreenPos();ImGui::InvisibleButton(names[i],{46*s,46*s});bool hot=ImGui::IsItemHovered(),active=panel==pages[i];ImVec2 c{p.x+23*s,p.y+23*s};ImVec2 q[6];for(int j=0;j<6;++j){float a=float(j)*3.14159265f/3.f;q[j]={c.x+23*s*std::cos(a),c.y+23*s*std::sin(a)};}d->AddConvexPolyFilled(q,6,IM_COL32(5,27,42,232));d->AddPolyline(q,6,active||hot?IM_COL32(71,224,244,255):IM_COL32(46,119,143,210),ImDrawFlags_Closed,1.5f*s);command_icons::icon(d,c,26*s,icons[i],IM_COL32(77,205,227,255));tooltip(names[i]);if(ImGui::IsItemClicked())toggle(pages[i]);ImGui::PopID();}
+    ImVec2 c{w-83*s,h-86*s};d->AddCircleFilled(c,74*s,IM_COL32(2,14,27,238),64);d->AddCircle(c,73*s,IM_COL32(60,153,182,220),64,2*s);d->AddCircle(c,53*s,IM_COL32(12,102,145,240),64,3*s);
+    for(int j=0;j<32;++j){float a=3.14159265f+(j/31.f)*3.14159265f;ImVec2 a1{c.x+60*s*std::cos(a),c.y+60*s*std::sin(a)},a2{c.x+68*s*std::cos(a),c.y+68*s*std::sin(a)};d->AddLine(a1,a2,j<8+int(std::log2(speed))*8?IM_COL32(13,159,216,255):IM_COL32(25,65,85,210),3*s);}
+    ImGui::SetCursorScreenPos({c.x-42*s,c.y-40*s});ImGui::InvisibleButton("Pause / play",{84*s,80*s});if(ImGui::IsItemClicked())paused=!paused;tooltip(paused?"Resume simulation [Space]":"Pause simulation [Space]");
+    if(paused)d->AddTriangleFilled({c.x-12*s,c.y-24*s},{c.x-12*s,c.y+24*s},{c.x+25*s,c.y},IM_COL32(120,228,255,255));else{d->AddRectFilled({c.x-16*s,c.y-22*s},{c.x-5*s,c.y+22*s},IM_COL32(120,228,255,255));d->AddRectFilled({c.x+5*s,c.y-22*s},{c.x+16*s,c.y+22*s},IM_COL32(120,228,255,255));}
+    ImGui::SetCursorScreenPos({c.x-105*s,c.y-62*s});if(ImGui::Button("+",{25*s,25*s}))speed=std::min(8,speed*2);ImGui::SetCursorScreenPos({c.x-105*s,c.y-32*s});if(ImGui::Button("-",{25*s,25*s}))speed=std::max(1,speed/2);ImGui::SetCursorScreenPos({c.x-111*s,c.y+7*s});ImGui::Text("%dx",speed);
+    ImGui::End();ImGui::PopStyleVar(2);
   }
   void hud(float w,float h){
-    float s=uiScale;bool compact=w/s<1120.f;ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{16.f*s,10.f*s});ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,{8.f*s,4.f*s});ImGui::PushStyleColor(ImGuiCol_WindowBg,ImVec4(.018f,.04f,.075f,.99f));
-    fixedWindow("Main HUD",0,0,w,hudHeight());
-    if(titleFont)ImGui::PushFont(titleFont);ImGui::TextUnformatted("ESCALATION");if(titleFont)ImGui::PopFont();ImGui::SameLine(0,24.f*s);
-    if(screen==Game){flag(sim.state.player,{26.f*s,18.f*s});ImGui::SameLine();ImGui::TextUnformatted(world.countries[sim.state.player].name.c_str());ImGui::SameLine(0,24.f*s);ImGui::TextUnformatted(campaignDate().c_str());
-      if(compact)ImGui::SetCursorPos({16.f*s,52.f*s});else ImGui::SameLine(0,24.f*s);
-      float controls=260.f*s;float allocationWidth=compact?std::max(170.f*s,w-controls-48.f*s):std::max(180.f*s,ImGui::GetContentRegionAvail().x-controls-24.f*s);allocationBar(allocationWidth,true);ImGui::SameLine(0,20.f*s);
-      if(button(paused?"|| Paused":"> Running"))paused=!paused;ImGui::SameLine();ImGui::SetNextItemWidth(62.f*s);const char* values[]={"1x","2x","4x","8x"};int v=speed==1?0:speed==2?1:speed==4?2:3;if(ImGui::Combo("##speed",&v,values,4))speed=1<<v;ImGui::SameLine();if(button("Options"))openPause();
-    }else{ImGui::SameLine();ImGui::TextColored(muted,"Select a nation on the map");}
-    ImGui::End();ImGui::PopStyleColor();ImGui::PopStyleVar(2);if(screen==Game)readyRail(h);
+    float s=uiScale;ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,{10*s,8*s});ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize,0.f);
+    ImGui::SetNextWindowPos({0,0});ImGui::SetNextWindowSize({w,hudHeight()});
+    ImGui::Begin("Main HUD",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar);
+    if(button("Menu"))openPause();ImGui::SameLine();if(screen==Game){flag(sim.state.player,{23*s,16*s});ImGui::SameLine();ImGui::TextUnformatted(world.countries[sim.state.player].name.c_str());ImGui::SameLine(0,18*s);ImGui::TextUnformatted(campaignDate().c_str());
+      float aw=std::min(320*s,w*.32f);ImGui::SetCursorPos({w-aw-14*s,4*s});allocationBar(aw,true);
+    }else{ImGui::SameLine();ImGui::TextUnformatted("ESCALATION / Select a nation");}
+    ImGui::End();ImGui::PopStyleVar(2);if(screen==Game&&panel==None&&noticeRemaining>0){auto*d=ImGui::GetForegroundDrawList();ImVec2 p{readyRailWidth(h)+12*s,hudHeight()+8*s};float wrap=std::min(550*s,w-p.x-16*s);d->AddText(ImGui::GetFont(),ImGui::GetFontSize(),{p.x+1,p.y+1},IM_COL32(0,0,0,240),message.c_str(),nullptr,wrap);d->AddText(ImGui::GetFont(),ImGui::GetFontSize(),p,IM_COL32(229,238,233,255),message.c_str(),nullptr,wrap);}if(screen==Game){readyRail(h);auto*d=ImGui::GetBackgroundDrawList();d->AddRectFilledMultiColor({0,h-24*s},{w,h},IM_COL32(5,94,121,0),IM_COL32(5,94,121,0),IM_COL32(5,94,121,150),IM_COL32(5,94,121,150));auto date=campaignDate();auto size=ImGui::CalcTextSize(date.c_str());d->AddText({(w-size.x)*.5f,h-22*s},IM_COL32(183,224,238,255),date.c_str());}
   }
   void pauseMenu(float w,float h){
     if(!pauseOpen){if(ImGui::BeginPopupModal("Command options")){ImGui::CloseCurrentPopup();ImGui::EndPopup();}return;}

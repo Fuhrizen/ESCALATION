@@ -57,8 +57,15 @@ int main(){
     app.sim.state.day=59;check(app.campaignDate()=="1 March 1920","Full date preserves campaign calendar");
     check(app.effectiveUiScale(1280,720)<app.effectiveUiScale(1920,1080),"Auto UI scale responds to screen dimensions");
     app.selectedUnit=-1;app.selectedSite=-1;app.selectedRegion=-1;app.panel=App::None;app.uiScale=1;
-    check(app.mapOverlayHit({20,200},1280,720)&&app.mapOverlayHit({80,650},1280,720),"Permanent deployment rail and circular menu intercept map clicks");
-    check(!app.mapOverlayHit({600,300},1280,720),"Map remains usable between anchored controls");
+    check(app.mapOverlayHit({20,200},1280,720)&&app.mapOverlayHit({1200,650},1280,720),"Deployment rail and lower-right simulation controls intercept map clicks");
+    check(!app.mapOverlayHit({80,650},1280,720)&&!app.mapOverlayHit({600,300},1280,720),"Unoccupied lower-left corner and map center remain usable");
+    app.selectedUnit=0;app.selectedUnits={0};app.selectedSettlement=app.selectedWorldCity=-1;
+    check(app.mapOverlayHit({200,620},1280,720),"Lower-left active inspector intercepts map clicks");
+    app.construction=app.readyUnitPlacement=-1;app.attackMode=1;
+    io.AddMousePosEvent(200,620);frame();io.AddMouseButtonEvent(ImGuiMouseButton_Left,true);frame();io.AddMouseButtonEvent(ImGuiMouseButton_Left,false);frame();
+    check(app.attackMode==1&&app.selectedUnit==0,"Clicking the inspection dock must not issue or consume an armed map attack");
+    io.AddKeyEvent(ImGuiKey_Escape,true);frame();
+    check(app.attackMode==0,"Escape cancels point-attack targeting");io.AddKeyEvent(ImGuiKey_Escape,false);frame();
     app.panel=App::Build;check(app.mapOverlayHit({600,300},1280,720),"Full navigation pages intercept map input");
     ImGui::DestroyContext();std::cout<<"Passed "<<checks<<" native input integration checks\n";return 0;
   }catch(const std::exception& e){std::cerr<<"Input check failed after "<<checks<<": "<<e.what()<<"\n";ImGui::DestroyContext();return 1;}
