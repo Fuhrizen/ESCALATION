@@ -3,6 +3,9 @@
   float researchZoom=1.0f;
   ImVec2 researchPan{32,32};
   int researchField=-1;
+  // Tech topology is immutable during a campaign; cache lanes instead of
+  // rebuilding the dependency graph on every rendered frame.
+  struct ResearchLayout { int field=-1,count=-1; std::vector<int> depth,members; std::vector<float> lane; } researchLayout;
   void researchIcon(ImDrawList* d,ImVec2 c,float size,int kind,ImU32 color){
     float u=size/32.0f;
     auto p=[&](float x,float y){return ImVec2{c.x+x*u,c.y+y*u};};
@@ -69,11 +72,11 @@
     for(int k=0;k<8;++k){
       ImGui::SetCursorPos({8,58.0f+k*54+((focus==0||focus==3)&&k>0?26.0f:0.0f)});ImGui::PushID(k);
       auto a=ImGui::GetCursorScreenPos();bool active=focus==categories[k]||(k==0&&focus==3);
-      ImGui::InvisibleButton("category",{nav-16,50});bool over=ImGui::IsItemHovered();
-      if(active||over){nd->AddRectFilled(a,{a.x+nav-16,a.y+50},active?IM_COL32(18,56,88,255):IM_COL32(14,38,56,255),3);if(active){nd->AddRect(a,{a.x+nav-16,a.y+50},IM_COL32(34,147,211,255),3);nd->AddRectFilled(a,{a.x+3,a.y+50},cyan);}}
+      bool activate=ImGui::InvisibleButton("category",{nav-16,50},ImGuiButtonFlags_EnableNav);bool over=ImGui::IsItemHovered()||ImGui::IsItemFocused();bool pressed=ImGui::IsItemActive();
+      if(active||over){nd->AddRectFilled(a,{a.x+nav-16,a.y+50},pressed?IM_COL32(26,78,110,255):active?IM_COL32(18,56,88,255):IM_COL32(14,38,56,255),3);if(active){nd->AddRect(a,{a.x+nav-16,a.y+50},IM_COL32(34,147,211,255),3);nd->AddRectFilled(a,{a.x+3,a.y+50},cyan);}}
       researchIcon(nd,{a.x+27,a.y+25},28,icons[k],active?pale:soft);
       nd->AddText({a.x+52,a.y+16},active?pale:soft,labels[k]);
-      if(ImGui::IsItemClicked()){focus=categories[k];researchSelected=-1;search[0]=0;fit=true;researchField=focus;}
+      if(activate){focus=categories[k];researchSelected=-1;search[0]=0;fit=true;researchField=focus;}
       nd->AddLine({a.x+10,a.y+52},{a.x+nav-26,a.y+52},IM_COL32(24,52,72,255));ImGui::PopID();
     }
     if(focus==0||focus==3){ImGui::SetCursorPos({36,110});if(ImGui::Selectable("Special operations",focus==3,0,{nav-54,26})){focus=3;researchSelected=-1;search[0]=0;fit=true;researchField=focus;}}
@@ -88,25 +91,31 @@
     auto cp=ImGui::GetWindowPos();auto size=ImGui::GetWindowSize();auto* draw=ImGui::GetWindowDrawList();
     const float cardW=196,cardH=110,stepX=260,stepY=135;
     const int count=int(sim.techs.size());
-    std::vector<int> depth(count,0),parent(count,-1),members;
-    std::vector<std::vector<int>> children(count);
-    for(int id=0;id<count;++id)if(belongs(id))members.push_back(id);
-    // Longest prerequisite path establishes columns. A primary dependency establishes subtree lanes.
-    for(int pass=0;pass<count;++pass){bool changed=false;for(int id:members)for(int p:sim.techs[id].prerequisites)if(belongs(p)&&depth[id]<depth[p]+1){depth[id]=depth[p]+1;changed=true;}if(!changed)break;}
-    for(int id:members){for(int p:sim.techs[id].prerequisites)if(belongs(p)&&(parent[id]<0||depth[p]>depth[parent[id]]))parent[id]=p;if(parent[id]>=0)children[parent[id]].push_back(id);}
-    std::vector<float> lane(count,0);float nextLane=0;
-    std::function<float(int)> assign=[&](int id){if(children[id].empty())return lane[id]=nextLane++;float first=-1,last=-1;for(int child:children[id]){float y=assign(child);if(first<0)first=y;last=y;}return lane[id]=(first+last)*.5f;};
-    for(int id:members)if(parent[id]<0){assign(id);nextLane+=.4f;}
-    // Compact each depth in subtree order. Wide later forks do not force the
-    // first three branches off screen, and positions never depend on visibility.
-    std::map<int,std::vector<int>> columns;for(int id:members)columns[depth[id]].push_back(id);
-    size_t widest=1;for(const auto& column:columns)widest=std::max(widest,column.second.size());
-    for(auto& column:columns){auto& nodes=column.second;std::stable_sort(nodes.begin(),nodes.end(),[&](int a,int b){return lane[a]<lane[b];});for(size_t i=0;i<nodes.size();++i)lane[nodes[i]]=float(i)-float(nodes.size()-1)*.5f+float(widest-1)*.5f;}
+    if(researchLayout.field!=focus||researchLayout.count!=count){
+      researchLayout.field=focus;researchLayout.count=count;
+      researchLayout.depth.assign(count,0);researchLayout.members.clear();
+      auto& depth=researchLayout.depth;auto& members=researchLayout.members;
+      std::vector<int> parent(count,-1);
+      std::vector<std::vector<int>> children(count);
+      for(int id=0;id<count;++id)if(belongs(id))members.push_back(id);
+      // Longest prerequisite path establishes columns. A primary dependency establishes subtree lanes.
+      for(int pass=0;pass<count;++pass){bool changed=false;for(int id:members)for(int p:sim.techs[id].prerequisites)if(belongs(p)&&depth[id]<depth[p]+1){depth[id]=depth[p]+1;changed=true;}if(!changed)break;}
+      for(int id:members){for(int p:sim.techs[id].prerequisites)if(belongs(p)&&(parent[id]<0||depth[p]>depth[parent[id]]))parent[id]=p;if(parent[id]>=0)children[parent[id]].push_back(id);}
+      researchLayout.lane.assign(count,0);auto& lane=researchLayout.lane;float nextLane=0;
+      std::function<float(int)> assign=[&](int id){if(children[id].empty())return lane[id]=nextLane++;float first=-1,last=-1;for(int child:children[id]){float y=assign(child);if(first<0)first=y;last=y;}return lane[id]=(first+last)*.5f;};
+      for(int id:members)if(parent[id]<0){assign(id);nextLane+=.4f;}
+      // Compact each depth in subtree order. Wide later forks do not force the
+      // first three branches off screen, and positions never depend on visibility.
+      std::map<int,std::vector<int>> columns;for(int id:members)columns[depth[id]].push_back(id);
+      size_t widest=1;for(const auto& column:columns)widest=std::max(widest,column.second.size());
+      for(auto& column:columns){auto& nodes=column.second;std::stable_sort(nodes.begin(),nodes.end(),[&](int a,int b){return lane[a]<lane[b];});for(size_t i=0;i<nodes.size();++i)lane[nodes[i]]=float(i)-float(nodes.size()-1)*.5f+float(widest-1)*.5f;}
+    }
+    const auto& depth=researchLayout.depth;const auto& lane=researchLayout.lane;const auto& members=researchLayout.members;
     auto position=[&](int id){return ImVec2{depth[id]*stepX,lane[id]*stepY};};
     std::string query(search);std::transform(query.begin(),query.end(),query.begin(),[](unsigned char c){return char(std::tolower(c));});
-    std::vector<int> shown;
-    for(int id:members){if(!visible(id))continue;std::string name=sim.techs[id].name;std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return char(std::tolower(c));});if(query.empty()||name.find(query)!=std::string::npos)shown.push_back(id);}
-    auto displayed=[&](int id){return std::find(shown.begin(),shown.end(),id)!=shown.end();};
+    std::vector<int> shown;std::vector<bool> shownMask(count,false);
+    for(int id:members){if(!visible(id))continue;std::string name=sim.techs[id].name;std::transform(name.begin(),name.end(),name.begin(),[](unsigned char c){return char(std::tolower(c));});if(query.empty()||name.find(query)!=std::string::npos) {shown.push_back(id);shownMask[id]=true;}}
+    auto displayed=[&](int id){return id>=0&&id<count&&shownMask[id];};
     if(fit&&!shown.empty()){
       float minX=1e9f,minY=1e9f,maxX=0,maxY=0;for(int id:shown){auto p=position(id);minX=std::min(minX,p.x);minY=std::min(minY,p.y);maxX=std::max(maxX,p.x+cardW);maxY=std::max(maxY,p.y+cardH);}
       float fitWidth=size.x-68;if(researchSelected>=0)fitWidth=std::max(460.0f,fitWidth-370.0f);
@@ -132,8 +141,8 @@
     for(int id:shown)for(int p:sim.techs[id].prerequisites){if(!displayed(p))continue;auto a=screenPos(p),b=screenPos(id);a={a.x+nw,a.y+nh*.5f};b={b.x,b.y+nh*.5f};float mid=(a.x+b.x)*.5f;ImU32 col=s.completed[p]?IM_COL32(67,193,234,220):IM_COL32(103,149,175,180);draw->AddBezierCubic(a,{mid,a.y},{mid,b.y},b,col,2.2f);draw->AddLine({b.x-8,b.y-5},b,col,2);draw->AddLine({b.x-8,b.y+5},b,col,2);}
     auto text=[&](ImVec2 p,ImU32 color,const char* value,float wrap=0){draw->AddText(ImGui::GetFont(),std::max(15.0f,ImGui::GetFontSize()*z),p,color,value,nullptr,wrap);};
     for(int id:shown){auto a=screenPos(id);ImVec2 b{a.x+nw,a.y+nh};if(b.x<cp.x||a.x>cp.x+size.x||b.y<cp.y||a.y>cp.y+size.y)continue;const auto& tech=sim.techs[id];int qi=queueIndex(id);bool done=s.completed[id];ImU32 edge=done?green:qi>=0?IM_COL32(244,190,98,255):cyan;
-      ImGui::SetCursorScreenPos(a);ImGui::PushID(id);ImGui::InvisibleButton("technology",{nw,nh});bool over=ImGui::IsItemHovered();if(ImGui::IsItemClicked())researchSelected=id;
-      draw->AddRectFilled(a,b,over?IM_COL32(18,48,72,255):IM_COL32(7,28,40,228),1);draw->AddRectFilled({a.x+1,b.y-32*z},{b.x-1,b.y-1},done?IM_COL32(13,54,58,255):IM_COL32(14,44,66,255),4);draw->AddRect(a,b,edge,1,0,id==researchSelected?2.8f:1.2f);
+      ImGui::SetCursorScreenPos(a);ImGui::PushID(id);bool activate=ImGui::InvisibleButton("technology",{nw,nh},ImGuiButtonFlags_EnableNav);bool over=ImGui::IsItemHovered()||ImGui::IsItemFocused();bool pressed=ImGui::IsItemActive();if(activate)researchSelected=id;
+      draw->AddRectFilled(a,b,pressed?IM_COL32(26,74,100,255):over?IM_COL32(18,48,72,255):IM_COL32(7,28,40,228),1);draw->AddRectFilled({a.x+1,b.y-32*z},{b.x-1,b.y-1},done?IM_COL32(13,54,58,255):IM_COL32(14,44,66,255),4);draw->AddRect(a,b,edge,1,0,id==researchSelected?2.8f:1.2f);
       std::string iconName=tech.name;std::transform(iconName.begin(),iconName.end(),iconName.begin(),[](unsigned char c){return char(std::tolower(c));});
       int kind=focus==8?14:focus==4?9:focus==1?10:focus==2?4:focus==5?5:focus==6?6:focus==7?7:focus==3?13:8;
       if(iconName.find("foundation")!=std::string::npos&&focus==0)kind=0;
@@ -151,6 +160,7 @@
       if(done){draw->AddCircleFilled({a.x+17*z,b.y-16*z},8*z,green);draw->AddLine({a.x+13*z,b.y-16*z},{a.x+16*z,b.y-13*z},IM_COL32(8,38,43,255),2);draw->AddLine({a.x+16*z,b.y-13*z},{a.x+21*z,b.y-19*z},IM_COL32(8,38,43,255),2);}else researchIcon(draw,{a.x+17*z,b.y-16*z},15*z,6,edge);
       text({a.x+33*z,b.y-26*z},edge,status.c_str());
       if(qi==0){auto& job=s.research.front();float progress=std::clamp(float(job.progress/job.cost),0.0f,1.0f);draw->AddRectFilled({a.x+1,b.y-4},{a.x+(nw-2)*progress,b.y-1},edge);}
+      if(ImGui::IsItemHovered()&&z<.75f){ImGui::BeginTooltip();ImGui::TextUnformatted(tech.name.c_str());ImGui::TextUnformatted(status.c_str());ImGui::PushTextWrapPos(320);ImGui::TextUnformatted(tech.effect.c_str());ImGui::PopTextWrapPos();ImGui::EndTooltip();}
       ImGui::PopID();
     }
     if(shown.empty())draw->AddText({cp.x+30,cp.y+40},soft,"No revealed technology matches your search.");
@@ -177,7 +187,7 @@
       if(tech.sourceLevel>0){ImGui::TextColored(muted,"Technology level: %.1f / current %.2f",tech.sourceLevel,sim.researchLevel());ImGui::Text("Research points: %.0f",tech.sourcePoints);}else ImGui::TextColored(muted,"Reference era: %d",tech.year);
       for(int p:tech.prerequisites)if(visible(p))ImGui::TextWrapped("Requires: %s",sim.techs[p].name.c_str());
       if(s.completed[researchSelected])ImGui::TextColored(accent,"Capability complete");
-      else if(qi>=0){auto eta=sim.researchETA(researchSelected);ImGui::TextWrapped("%s: %s",qi==0?"Remaining":"Ready in",std::isfinite(eta)?durationText(eta).c_str():"Paused");if(button("Remove from queue"))sim.removeResearch(size_t(qi));}
+      else if(qi>=0){auto eta=sim.researchETA(researchSelected);ImGui::TextWrapped("%s: %s",qi==0?"Remaining":"Ready in",std::isfinite(eta)?durationText(eta).c_str():"Paused");if(button("Remove from queue")){sim.removeResearch(size_t(qi));notice("Research removed: "+tech.name);}}
       else{ImGui::Text("Early research: %.1fx duration",sim.researchCost(researchSelected)/tech.cost);auto eta=sim.researchETA(researchSelected);ImGui::Text("Duration: %s",std::isfinite(eta)?durationText(eta).c_str():"Paused");ImGui::Spacing();ImGui::PushStyleColor(ImGuiCol_Button,{.02f,.43f,.72f,1});if(button("Queue research",sim.available(researchSelected))){if(sim.queueResearch(researchSelected))notice("Research queued: "+tech.name);}ImGui::PopStyleColor();}
       ImGui::End();ImGui::PopStyleColor(2);
     }

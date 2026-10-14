@@ -46,6 +46,14 @@ static void tooltip(const std::string& text){
 static bool button(const char* label,bool enabled=true){
   ImGui::BeginDisabled(!enabled);
   bool clicked=ImGui::Button(label);
+  // Fade only the visual outline. Activation and press feedback remain immediate.
+  ImGui::PushID(label);ImGuiID feedback=ImGui::GetID("hover-outline");ImGui::PopID();
+  auto* storage=ImGui::GetStateStorage();float strength=storage->GetFloat(feedback,0);
+  bool hot=enabled&&(ImGui::IsItemHovered()||ImGui::IsItemFocused());
+  strength+=(float(hot)-strength)*(1-std::exp(-24*std::min(ImGui::GetIO().DeltaTime,.1f)));
+  if(enabled&&ImGui::IsItemActive())strength=1;
+  storage->SetFloat(feedback,strength);
+  if(strength>.01f)ImGui::GetWindowDrawList()->AddRect(ImGui::GetItemRectMin(),ImGui::GetItemRectMax(),IM_COL32(93,211,236,int(180*strength)),ImGui::GetStyle().FrameRounding,0,1.1f);
   ImGui::EndDisabled();
   return clicked;
 }
@@ -80,6 +88,7 @@ static void style(){
   s.Colors[ImGuiCol_FrameBg]={0.09f,0.14f,0.17f,1};
   s.Colors[ImGuiCol_Button]={0.055f,0.19f,0.32f,1};
   s.Colors[ImGuiCol_ButtonHovered]={0.08f,0.32f,0.53f,1};
+  s.Colors[ImGuiCol_ButtonActive]={0.12f,0.43f,0.64f,1};
   s.Colors[ImGuiCol_Header]={0.055f,0.22f,0.37f,1};
   s.Colors[ImGuiCol_CheckMark]=accent;
   s.Colors[ImGuiCol_PlotHistogram]=accent;

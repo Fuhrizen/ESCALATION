@@ -80,6 +80,28 @@ int main(){
     io.AddMouseWheelEvent(0,-1);researchFrame();check(app.researchPan.y<beforePan.y&&app.researchZoom==beforeZoom,"Research wheel scrolls the graph without scaling cards");
     io.AddKeyEvent(ImGuiMod_Ctrl,true);io.AddMouseWheelEvent(0,-1);researchFrame();check(app.researchZoom<beforeZoom,"Ctrl wheel zooms research graph out");
     io.AddKeyEvent(ImGuiMod_Ctrl,false);researchFrame();
+    // Custom category controls follow the same cancellable release semantics as standard buttons.
+    io.AddMousePosEvent(100,200);researchFrame();io.AddMouseButtonEvent(ImGuiMouseButton_Left,true);researchFrame();
+    check(app.focus==0,"Pressing a research category does not switch before release");
+    io.AddMousePosEvent(600,420);researchFrame();io.AddMouseButtonEvent(ImGuiMouseButton_Left,false);researchFrame();
+    check(app.focus==0,"Dragging off a pressed research category cancels activation");
+    io.AddMousePosEvent(100,200);researchFrame();io.AddMouseButtonEvent(ImGuiMouseButton_Left,true);researchFrame();io.AddMouseButtonEvent(ImGuiMouseButton_Left,false);researchFrame();
+    check(app.focus==4,"Releasing over the missile category switches research field");
+    check(!app.researchLayout.members.empty()&&app.researchLayout.field==4,"Switching categories rebuilds the cached tree immediately");
+    app.camera.globe=false;app.camera.longitude=app.camera.latitude=0;app.camera.zoom=8;
+    app.camera.x=0;app.camera.y=60;app.camera.width=900;app.camera.height=600;
+    std::vector<Point> staticPath{{-2,-1},{0,1},{2,-1}};
+    ImGui::NewFrame();ImGui::Begin("Static geometry regression");auto* draw=ImGui::GetWindowDrawList();
+    int begin=draw->VtxBuffer.Size;app.geographicLine(draw,staticPath,IM_COL32_WHITE,1,false,true,true);
+    int count=draw->VtxBuffer.Size-begin;check(count>0,"Static geographic geometry draws visible vertices");
+    app.geographicLine(draw,staticPath,IM_COL32_WHITE,1,false,true,true);
+    bool equivalent=draw->VtxBuffer.Size-begin==count*2;
+    for(int i=0;i<count&&equivalent;++i){auto a=draw->VtxBuffer[begin+i].pos,b=draw->VtxBuffer[begin+count+i].pos;equivalent=a.x==b.x&&a.y==b.y;}
+    check(equivalent,"Cached static geometry exactly preserves projected vertices");
+    float originalX=draw->VtxBuffer[begin].pos.x;app.camera.longitude=1;
+    int shifted=draw->VtxBuffer.Size;app.geographicLine(draw,staticPath,IM_COL32_WHITE,1,false,true,true);
+    check(draw->VtxBuffer.Size>shifted&&draw->VtxBuffer[shifted].pos.x!=originalX,"Camera changes immediately invalidate static projections");
+    ImGui::End();ImGui::EndFrame();
     ImGui::DestroyContext();std::cout<<"Passed "<<checks<<" native input integration checks\n";return 0;
   }catch(const std::exception& e){std::cerr<<"Input check failed after "<<checks<<": "<<e.what()<<"\n";ImGui::DestroyContext();return 1;}
 }

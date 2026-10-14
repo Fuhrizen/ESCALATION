@@ -139,16 +139,33 @@
     };
     for(int y=0;y<rows-1;++y)for(int x=0;x<columns-1;++x){const auto& a=frontSamples[size_t(y)*columns+x];const auto& b=frontSamples[size_t(y)*columns+x+1];const auto& c=frontSamples[size_t(y+1)*columns+x+1];const auto& e=frontSamples[size_t(y+1)*columns+x];segment(a,b,c);segment(a,c,e);}
   }
-  void geographicLine(ImDrawList* d,const std::vector<Point>& points,ImU32 color,float width,bool dashed=false,bool smoothCorners=true){
+  // World roads/rivers are immutable after loading. Cache their geographic
+  // rounding and viewport projections, never dynamic routes or range circles.
+  std::map<const std::vector<Point>*,std::vector<Point>> staticRoundedLines;
+  std::map<const std::vector<Point>*,std::vector<std::pair<Point,Point>>> staticProjectedLines;
+  std::array<double,8> staticLineCamera{};
+  void geographicLine(ImDrawList* d,const std::vector<Point>& points,ImU32 color,float width,bool dashed=false,bool smoothCorners=true,bool staticSource=false){
     if(points.size()<2)return;
+    std::vector<std::pair<Point,Point>>* projected=nullptr;
+    if(staticSource&&!dashed){
+      std::array<double,8> view{camera.longitude,camera.latitude,camera.zoom,double(camera.globe),camera.x,camera.y,camera.width,camera.height};
+      if(view!=staticLineCamera){staticProjectedLines.clear();staticLineCamera=view;}
+      auto found=staticProjectedLines.find(&points);
+      if(found!=staticProjectedLines.end()){for(const auto& segment:found->second)d->AddLine(vec(segment.first),vec(segment.second),color,width);return;}
+      projected=&staticProjectedLines[&points];
+    }
     // Quadratic corner rounding stays in each source corner's convex hull.
     // Unlike screen-space Catmull-Rom, it cannot invent loops or overshoot banks.
     auto mix=[](Point a,Point b,double t){return Point{a.x+std::remainder(b.x-a.x,360.0)*t,a.y+(b.y-a.y)*t};};
-    std::vector<Point> smooth{points.front()};
+    std::vector<Point> dynamicSmooth;
+    auto& smooth=staticSource?staticRoundedLines[&points]:dynamicSmooth;
+    if(smooth.empty()){
+    smooth.push_back(points.front());
     for(size_t i=1;i+1<points.size();++i){if(!smoothCorners){smooth.push_back(points[i]);continue;}Point corner=points[i],a=mix(corner,points[i-1],.15),b=mix(corner,points[i+1],.15);
       smooth.push_back(a);for(int j=1;j<=6;++j){double t=j/6.0;smooth.push_back(mix(mix(a,corner,t),mix(corner,b,t),t));}
     }
     smooth.push_back(points.back());
+    }
     constexpr double rad=.017453292519943295;
     auto visibleSurface=[&](Point p){return !camera.globe||std::sin(p.y*rad)*std::sin(camera.latitude*rad)+std::cos(p.y*rad)*std::cos(camera.latitude*rad)*std::cos((p.x-camera.longitude)*rad)>=0;};
     double dashTravel=0;
@@ -158,8 +175,8 @@
         Point pa=camera.project(ga),pb=camera.project(gb);double period=camera.width*camera.zoom;
         if(!camera.globe)pb.x=pa.x+std::remainder(pb.x-pa.x,period);
         const double length=std::hypot(pb.x-pa.x,pb.y-pa.y);
-        for(int copy=camera.globe?0:-1;copy<=(camera.globe?0:1);++copy){float shift=float(copy*period);if(std::max(pa.x,pb.x)+shift<camera.x||std::min(pa.x,pb.x)+shift>camera.x+camera.width)continue;
-          if(!dashed)d->AddLine({float(pa.x)+shift,float(pa.y)},{float(pb.x)+shift,float(pb.y)},color,width);
+        for(int copy=camera.globe?0:-1;copy<=(camera.globe?0:1);++copy){float shift=float(copy*period);if(std::max(pa.x,pb.x)+shift<camera.x-width||std::min(pa.x,pb.x)+shift>camera.x+camera.width+width||std::max(pa.y,pb.y)<camera.y-width||std::min(pa.y,pb.y)>camera.y+camera.height+width)continue;
+          if(!dashed){Point a{pa.x+shift,pa.y},b{pb.x+shift,pb.y};if(projected)projected->push_back({a,b});d->AddLine(vec(a),vec(b),color,width);}
           else for(double travel=0;travel<length;){double phase=std::fmod(dashTravel+travel,14.0),end=std::min(length,travel+(phase<9?9-phase:14-phase));if(end<=travel+.0001)break;
             if(phase<9){double t=travel/length,u=end/length;d->AddLine({float(pa.x+(pb.x-pa.x)*t)+shift,float(pa.y+(pb.y-pa.y)*t)},{float(pa.x+(pb.x-pa.x)*u)+shift,float(pa.y+(pb.y-pa.y)*u)},color,width);}travel=end;
           }
@@ -174,14 +191,14 @@
     if(camera.globe&&std::abs(camera.latitude)+radius>=89)radius=180;
     for(int id:world.nearbyRoads({camera.longitude,camera.latitude},radius+.3)){
       const auto& road=world.roads[id];double start=2+road.scalerank*1.8;float fade=reveal(camera.zoom,start,start*2.6);if(fade<.01)continue;
-      geographicLine(draw,road.points,IM_COL32(212,189,142,int(142*fade)),.85f+.7f*reveal(camera.zoom,16,80));
+      geographicLine(draw,road.points,IM_COL32(212,189,142,int(142*fade)),.85f+.7f*reveal(camera.zoom,16,80),false,true,true);
     }
   }
   void riversOverlay(ImDrawList* draw){
     if(!showRivers||camera.zoom<1.5)return;
     for(const auto& river:world.rivers){
       float fade=reveal(camera.zoom,1.5+river.scalerank*.35,4+river.scalerank*.7);if(fade<.01)continue;
-      geographicLine(draw,river.points,IM_COL32(95,167,210,int(165*fade)),1.1f+1.0f*reveal(camera.zoom,14,100));
+      geographicLine(draw,river.points,IM_COL32(95,167,210,int(165*fade)),1.1f+1.0f*reveal(camera.zoom,14,100),false,true,true);
     }
   }
   int cityPick(Point pointer) const{
