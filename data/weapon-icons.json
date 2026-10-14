@@ -1,0 +1,72 @@
+{
+  "source": "User-supplied AssetLib.tar.gz",
+  "archiveSha256": "d292419d467312a3c7b15f125ae5a217e886eb2e60f637733323455d377d77b4",
+  "rights": "User-supplied game assets; no public-domain or redistribution license asserted.",
+  "atlasSize": [
+    640,
+    128
+  ],
+  "cellSize": 128,
+  "icons": [
+    {
+      "name": "bullet",
+      "archivePath": "UI/UI_2048.png",
+      "sourceSha256": "a466eb29c7e7881a8e4c6236fad9c91630d82f0af59435dc4096a070bc0dcd8f",
+      "sourceCrop": [
+        944,
+        1325,
+        1036,
+        1420
+      ],
+      "cell": 0
+    },
+    {
+      "name": "shell",
+      "archivePath": "UI/UI_2048.png",
+      "sourceSha256": "a466eb29c7e7881a8e4c6236fad9c91630d82f0af59435dc4096a070bc0dcd8f",
+      "sourceCrop": [
+        1020,
+        1920,
+        1082,
+        1978
+      ],
+      "cell": 1
+    },
+    {
+      "name": "missile",
+      "archivePath": "UI/UI_2048.png",
+      "sourceSha256": "a466eb29c7e7881a8e4c6236fad9c91630d82f0af59435dc4096a070bc0dcd8f",
+      "sourceCrop": [
+        1165,
+        1915,
+        1228,
+        1978
+      ],
+      "cell": 2
+    },
+    {
+      "name": "depth_charge",
+      "archivePath": "UI/UI_2048.png",
+      "sourceSha256": "a466eb29c7e7881a8e4c6236fad9c91630d82f0af59435dc4096a070bc0dcd8f",
+      "sourceCrop": [
+        1252,
+        1902,
+        1292,
+        1978
+      ],
+      "cell": 3
+    },
+    {
+      "name": "torpedo",
+      "archivePath": "Units/IMAGES/PROJECTILES/TORPEDO.PNG",
+      "sourceSha256": "8de4cfcb8d456f0ae57d45e5a47f2458d353884cc352d95a1b6d75709686fdbc",
+      "sourceCrop": [
+        0,
+        0,
+        256,
+        256
+      ],
+      "cell": 4
+    }
+  ]
+}

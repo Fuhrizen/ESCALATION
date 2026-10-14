@@ -45,5 +45,11 @@
     "data/flags-atlas.png": "323c930d2d5f0f14d506368d3016bde4f8e6b05f4b2133d1af8645043bd2133c",
     "data/terrain-height.png": "7cc22eb0bc501c3de7384421a397d5a84b58ecb96f3628313139c50d6746a140",
     "data/terrain-surface.png": "02b9f7b73f38f99b9944c69bb07bcf27ae801efc98938efcb816f86ffee78678"
+  },
+  "weaponIcons": {
+    "source": "User-supplied AssetLib.tar.gz",
+    "atlas": "weapon-icons.png",
+    "metadata": "weapon-icons.json",
+    "rights": "User-supplied game assets; no public-domain or redistribution license asserted."
   }
 }
