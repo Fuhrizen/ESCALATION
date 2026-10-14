@@ -32,6 +32,8 @@
       poly({{-4,5},{-4,-6},{0,-16},{4,-6},{4,5}});poly({{-4,0},{-11,10},{-4,7}});poly({{4,0},{11,10},{4,7}});poly({{-3,9},{0,16},{3,9}});
     }else if(kind==10){ // Protective vest.
       poly({{-11,-13},{-5,-13},{-3,-6},{3,-6},{5,-13},{11,-13},{10,13},{-10,13}});d->AddLine(p(-10,4),p(10,4),IM_COL32(13,35,54,255),2*u);d->AddLine(p(-10,9),p(10,9),IM_COL32(13,35,54,255),2*u);
+    }else if(kind==14){
+      poly({{-15,3},{15,3},{9,12},{-9,12}});rect(-6,-6,6,3);line(0,-6,0,-15);line(-14,15,14,15,1);
     }else if(kind==11){ // Field medicine.
       rect(-12,-10,12,13,3);rect(-5,-14,5,-9,2);d->AddRectFilled(p(-3,-6),p(3,9),IM_COL32(13,35,54,255));d->AddRectFilled(p(-8,-1),p(8,4),IM_COL32(13,35,54,255));
     }else{ // Support gun on tripod.
@@ -44,10 +46,10 @@
     const float rail=pageSafeLeft(),top=hudHeight();
     const float nav=std::clamp(w*.148f,190.0f*uiScale,246.0f*uiScale);
     const ImU32 cyan=IM_COL32(43,188,246,255), pale=IM_COL32(217,234,247,255),soft=IM_COL32(134,176,204,255),green=IM_COL32(78,216,183,255);
-    const int categories[]={0,4,1,2,5,6,7};
-    const char* labels[]={"Ground forces","Missiles","Defence","Sensors","Industry","Science","Logistics"};
-    const int icons[]={2,9,3,4,5,6,7};
-    auto categoryName=[&](){for(int k=0;k<7;++k)if(categories[k]==focus)return labels[k];return "Special operations";};
+    const int categories[]={0,4,1,2,5,6,7,8};
+    const char* labels[]={"Ground forces","Missiles","Defence","Sensors","Industry","Science","Logistics","Navy"};
+    const int icons[]={2,9,3,4,5,6,7,14};
+    auto categoryName=[&](){for(int k=0;k<8;++k)if(categories[k]==focus)return labels[k];return "Special operations";};
     auto queueIndex=[&](int id){for(size_t q=0;q<s.research.size();++q)if(s.research[q].tech==id)return int(q);return -1;};
     auto visible=[&](int id){return id>=0&&id<int(sim.techs.size())&&sim.visibleResearch(id);};
     auto belongs=[&](int id){if(id<0||id>=int(sim.techs.size()))return false;if(int(sim.techs[id].field)==focus)return true;for(int p:sim.techs[id].prerequisites)if(int(sim.techs[p].field)==focus)return true;return false;};
@@ -63,7 +65,7 @@
     nd->AddRectFilled(np,{np.x+nav,np.y+h-top},IM_COL32(8,23,36,255));
     nd->AddLine({np.x+nav-1,np.y},{np.x+nav-1,h},IM_COL32(44,93,124,255));
     ImGui::SetCursorPos({20,24});ImGui::TextColored({.43f,.68f,.84f,1},"RESEARCH");
-    for(int k=0;k<7;++k){
+    for(int k=0;k<8;++k){
       ImGui::SetCursorPos({8,58.0f+k*54+((focus==0||focus==3)&&k>0?26.0f:0.0f)});ImGui::PushID(k);
       auto a=ImGui::GetCursorScreenPos();bool active=focus==categories[k]||(k==0&&focus==3);
       ImGui::InvisibleButton("category",{nav-16,50});bool over=ImGui::IsItemHovered();
@@ -124,7 +126,7 @@
       ImGui::SetCursorScreenPos(a);ImGui::PushID(id);ImGui::InvisibleButton("technology",{nw,nh});bool over=ImGui::IsItemHovered();if(ImGui::IsItemClicked())researchSelected=id;
       draw->AddRectFilled(a,b,over?IM_COL32(18,48,72,255):IM_COL32(13,35,54,255),5);draw->AddRectFilled({a.x+1,b.y-32*z},{b.x-1,b.y-1},done?IM_COL32(13,54,58,255):IM_COL32(14,44,66,255),4);draw->AddRect(a,b,edge,5,0,id==researchSelected?2.8f:1.2f);
       std::string iconName=tech.name;std::transform(iconName.begin(),iconName.end(),iconName.begin(),[](unsigned char c){return char(std::tolower(c));});
-      int kind=focus==4?9:focus==1?10:focus==2?4:focus==5?5:focus==6?6:focus==7?7:focus==3?13:8;
+      int kind=focus==8?14:focus==4?9:focus==1?10:focus==2?4:focus==5?5:focus==6?6:focus==7?7:focus==3?13:8;
       if(iconName.find("foundation")!=std::string::npos&&focus==0)kind=0;
       if(iconName.find("mobility")!=std::string::npos||iconName.find("motorised")!=std::string::npos||iconName.find("transport")!=std::string::npos)kind=1;
       if(iconName.find("armour")!=std::string::npos||iconName.find("armoured")!=std::string::npos||iconName.find("mechanised")!=std::string::npos)kind=2;

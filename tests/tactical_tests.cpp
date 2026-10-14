@@ -1,5 +1,6 @@
 #include "escalation/simulation.hpp"
 #include <cmath>
+#include <algorithm>
 #include <cstdio>
 #include <iostream>
 #include <stdexcept>
@@ -115,7 +116,7 @@ int main(){try{
   upgrades.state.levels[0]=14;check(upgrades.unitSpeedKmPerSecond(upgrades.state.units[0])==speed,"highest tier grants no unrelated mobility");
   double damage=upgrades.unitDamagePerSecond(upgrades.state.units[0],UnitType::Armour);
   upgrades.state.completed[18]=true;
-  check(std::abs(upgrades.unitDamagePerSecond(upgrades.state.units[0],UnitType::Armour)-damage*1.30)<1e-8,"ATGM technology increases infantry damage against armour");
+  check(upgrades.unitWeapons(upgrades.state.units[0]).size()==2&&upgrades.unitDamagePerSecond(upgrades.state.units[0],UnitType::Armour)>damage,"ATGM research adds a distinct anti-armour missile mount");
   check(upgrades.unitDamagePerSecond(upgrades.state.units[0],UnitType::Infantry)==damage,"ATGM never increases anti-infantry damage");
   upgrades.state.completed[17]=true;
   auto capabilities=upgrades.unitCapabilities(0);bool reserved=false;for(const auto& c:capabilities)if(c.name=="MANPADS")reserved=!c.active;
@@ -125,7 +126,7 @@ int main(){try{
   check(std::abs(upgrades.unitProtection(upgrades.state.units[0])-.15)<1e-8&&std::abs(upgrades.unitProtection(upgrades.state.units[1])-.05)<1e-8,"body armour protects infantry without applying its bonus to vehicles");
   upgrades.state.completed[8]=true;
   check(std::abs(upgrades.unitDamagePerSecond(upgrades.state.units[0],UnitType::Infantry)-damage*1.10)<1e-8,"small arms improves normal infantry damage");
-  check(std::abs(upgrades.unitDamagePerSecond(upgrades.state.units[0],UnitType::Armour)-damage*1.10*1.30)<1e-8,"small arms and anti-tank weapons apply their separate real effects");
+  check(std::abs(upgrades.unitDamagePerSecond(upgrades.state.units[0],UnitType::Armour)-(damage*1.10+7.8/20))<1e-8,"small arms boosts rifles while ATGM retains distinct damage and cadence");
   Simulation medicine(w);campaign(medicine);medicine.state.completed[12]=true;
   medicine.state.units={formation(0,1,{-1,1})};medicine.state.units[0].health=50;medicine.tick();
   check(std::abs(medicine.state.units[0].health-50.025)<1e-8,"field medicine restores living deployed formations while disengaged");
@@ -141,7 +142,42 @@ int main(){try{
   Site shipyard;shipyard.region=1;shipyard.type=Facility::Shipyard;shipyard.position={-4,0};crossing.state.sites.push_back(shipyard);
   check(!crossing.orderUnitAt(0,{4,0}),"legacy naval level and shipyard cannot enable sea transport");
   crossing.state.units.push_back(formation(0,1,{-2,0},UnitType::Destroyer));
-  check(!crossing.orderUnitAt(1,{2,0})&&!canEngage(UnitType::Destroyer,UnitType::Infantry),"legacy naval units have no active movement or combat");
+  check(crossing.orderUnitAt(1,{2,0})&&canEngage(UnitType::Destroyer,UnitType::Infantry),"destroyers move through water and carry coastal guns");
+  Simulation mounts(islands);campaign(mounts,true);mounts.state.war=true;
+  mounts.state.units={formation(0,1,{-2.9,0},UnitType::Destroyer),formation(1,1,{-2.8,0},UnitType::Destroyer),formation(1,1,{-2.85,.01},UnitType::Submarine),formation(1,1,{-3.01,0},UnitType::Infantry)};
+  check(mounts.engagementRange(mounts.state.units[0],mounts.state.units[2])==8&&mounts.engagementRange(mounts.state.units[0],mounts.state.units[1])==24,"baseline destroyer uses short-range depth charges and gun before guided weapon research");
+  mounts.state.completed[116]=mounts.state.completed[117]=true;
+  check(mounts.unitWeapons(mounts.state.units[0]).size()==3,"destroyer has separate coastal, anti-ship and ASW mounts");
+  check(mounts.engagementRange(mounts.state.units[0],mounts.state.units[3])==24&&mounts.engagementRange(mounts.state.units[0],mounts.state.units[2])==32,"target-specific ranges never flatten a destroyer into its longest missile range");
+  mounts.tick();bool gun=false,missile=false,torpedo=false;for(const auto& shot:mounts.state.engagements)if(shot.attacker==0){gun|=shot.weaponId=="naval_gun";missile|=shot.weaponId=="anti_ship";torpedo|=shot.weaponId=="asw_torpedo";}
+  check(gun&&missile&&torpedo,"independent mounts launch simultaneous projectiles against valid domains");
+  check(mounts.state.units[0].weaponAmmo[0]==29&&mounts.state.units[0].weaponAmmo[1]==3&&mounts.state.units[0].weaponAmmo[2]==3,"each mount consumes exactly one round rather than multiplying DPS across targets");
+  double surfaceHealth=mounts.state.units[1].health;mounts.tick();check(mounts.state.units[1].health==surfaceHealth,"long-flight missiles do not apply damage before impact");
+  Simulation deadzone(w);campaign(deadzone);deadzone.state.war=true;
+  deadzone.state.units={formation(0,1,{-.1,0},UnitType::Artillery),formation(1,1,{-.11,0})};deadzone.tick();
+  check(!deadzone.canEngage(deadzone.state.units[0],deadzone.state.units[1])&&std::none_of(deadzone.state.engagements.begin(),deadzone.state.engagements.end(),[](const Engagement& shot){return shot.attacker==0;}),"indirect artillery cannot fire inside its minimum range");
+  Simulation movingImpact(w);campaign(movingImpact);movingImpact.state.war=true;
+  movingImpact.state.units={formation(0,1,{-.1,1},UnitType::Armour),formation(1,1,{-.11,1})};
+  movingImpact.state.units[1].moving=true;movingImpact.state.units[1].destination={-1,1};movingImpact.state.units[1].waypoints={{-1,1}};
+  Engagement shortShot;shortShot.attacker=0;shortShot.defender=1;shortShot.weaponId="test";shortShot.targetMask=1;shortShot.target=movingImpact.state.units[1].position;shortShot.damage=5;shortShot.remaining=shortShot.total=.05;shortShot.impactRadiusKm=.05;movingImpact.state.engagements={shortShot};movingImpact.tick();
+  check(movingImpact.state.units[1].health<100,"final-tick travel tolerance prevents discretization from dodging short-flight direct fire");
+  Simulation escaped(w);campaign(escaped);escaped.state.war=true;escaped.state.units={formation(0,1,{-1,1},UnitType::Artillery),formation(1,1,{-.1,1})};
+  Engagement longShot=shortShot;longShot.origin=escaped.state.units[0].position;longShot.target={-.11,1};longShot.remaining=longShot.total=.25;longShot.impactRadiusKm=.05;escaped.state.engagements={longShot};escaped.tick();
+  check(escaped.state.units[1].health==100,"moving beyond a snapshot impact footprint evades a long-flight projectile");
+  Simulation homing(w);campaign(homing);homing.state.war=true;homing.state.units={formation(0,1,{-1,1},UnitType::MissileLauncher),formation(1,1,{-.1,1})};
+  Engagement guidedShot=shortShot;guidedShot.guided=true;guidedShot.target={-.5,1};homing.state.engagements={guidedShot};homing.tick();
+  check(homing.state.units[1].health==95,"guided weapons follow their original moving target instead of a stale snapshot");
+  Simulation single(w);campaign(single);single.state.war=true;single.state.units={formation(0,1,{-.1,1}),formation(1,1,{-.11,1}),formation(1,1,{-.12,1})};single.tick();
+  check(std::abs(single.state.units[1].health-99.675)<1e-8&&single.state.units[2].health==100,"one rifle mount chooses a single target instead of damaging an unlimited crowd");
+  Simulation exhaustion(w);campaign(exhaustion);exhaustion.state.war=true;exhaustion.state.units={formation(0,1,{-.1,1}),formation(1,1,{-.11,1})};exhaustion.state.units[0].weaponAmmo={0};exhaustion.state.units[0].weaponReserve={0};exhaustion.tick();
+  check(exhaustion.state.units[1].health==100,"empty magazines with no reserve cannot fire");
+  Simulation atgm(w);campaign(atgm);atgm.state.completed[18]=true;
+  auto rifle=formation(0,1,{-.1,1});auto armour=formation(1,1,{-.15,1},UnitType::Armour);auto foot=formation(1,1,{-.15,1});
+  check(atgm.canEngage(rifle,armour)&&!atgm.canEngage(rifle,foot),"researched ATGM adds useful armour range without extending rifle range against infantry");
+  atgm.state.completed[119]=true;
+  auto submarine=formation(0,1,{-.1,1},UnitType::Submarine);auto destroyer=formation(1,1,{-.2,1},UnitType::Destroyer);
+  check(atgm.engagementRange(submarine,destroyer)==40&&atgm.engagementRange(submarine,foot)==220,"submarine torpedoes and land-attack cruise missiles retain separate domains and ranges");
+  check(!canEngage(UnitType::Infantry,UnitType::Destroyer)&&!canEngage(UnitType::Destroyer,UnitType::Fighter),"invalid ground-to-naval and retired air engagements are rejected");
   Simulation pacing(w);campaign(pacing);
   pacing.state.units={formation(0,0,{-6,1})};
   check(pacing.orderUnitAt(0,{-6+100.0/111.18,1}),"hundred kilometre travel order succeeds");

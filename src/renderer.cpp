@@ -41,22 +41,57 @@ void main(){geo=position;id=int(country);vec2 p=position+vec2(offset,0);if(globe
   static const char* fragmentSource=R"(#version 330 core
 in float depth;in vec2 geo;flat in int id;
 uniform sampler2D palette,heightmap;uniform int globe,border,relief;out vec4 color;
+float hash3(vec3 p){p=fract(p*0.1031);p+=dot(p,p.yzx+33.33);return fract((p.x+p.y)*p.z);}
+float grain(vec3 p){
+ vec3 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+ return mix(mix(mix(hash3(i),hash3(i+vec3(1,0,0)),f.x),mix(hash3(i+vec3(0,1,0)),hash3(i+vec3(1,1,0)),f.x),f.y),mix(mix(hash3(i+vec3(0,0,1)),hash3(i+vec3(1,0,1)),f.x),mix(hash3(i+vec3(0,1,1)),hash3(i+vec3(1,1,1)),f.x),f.y),f.z);
+}
+// Fixed Earth-space texture: longitude seam and polar convergence have no noise seam.
+vec3 earthPoint(vec2 p){float a=radians(p.x),b=radians(p.y);return vec3(cos(b)*cos(a),sin(b),cos(b)*sin(a));}
+float dryZone(vec2 p,vec2 c,vec2 size){vec2 d=vec2(mod(p.x-c.x+180.0,360.0)-180.0,p.y-c.y)/size;return exp(-dot(d,d)*1.8);}
 void main(){
  if(globe==1&&depth<0)discard;
  vec4 base=texelFetch(palette,ivec2(id%16,id/16),0);
- if(relief==1&&id<254&&border==0){
-  vec2 uv=vec2(fract((geo.x+180.0)/360.0),(90.0-geo.y)/180.0),pixel=1.0/vec2(textureSize(heightmap,0));
-  float h=texture(heightmap,uv).r;
-  float dx=texture(heightmap,uv+vec2(pixel.x,0)).r-texture(heightmap,uv-vec2(pixel.x,0)).r;
-  float dy=texture(heightmap,uv+vec2(0,pixel.y)).r-texture(heightmap,uv-vec2(0,pixel.y)).r;
-  float shade=clamp(0.90+dx*3.0-dy*3.5,0.52,1.30);
-  vec3 terrain=mix(vec3(0.16,0.22,0.18),vec3(0.36,0.32,0.24),smoothstep(0.04,0.4,h));
-  terrain=mix(terrain,vec3(0.57,0.60,0.57),smoothstep(0.44,0.83,h));
-  terrain=mix(terrain,vec3(0.62,0.68,0.69),smoothstep(62.0,82.0,abs(geo.y))*0.65);
-  base.rgb=mix(terrain*shade,base.rgb,id>=192?0.35:0.14);
+ if(relief==1&&border==0&&id!=254){
+  vec2 uv=vec2((geo.x+180.0)/360.0,(90.0-geo.y)/180.0),pixel=1.0/vec2(textureSize(heightmap,0));
+  vec4 surface=texture(heightmap,uv);
+  vec3 earth=earthPoint(geo);
+  float broad=grain(earth*48.0),footprint=max(length(dFdx(earth)),length(dFdy(earth)));
+  float detailFade=1.0-smoothstep(0.002,0.014,footprint);
+  float fine=(grain(earth*420.0)-0.5)*detailFade;
+  if(id==255){
+   // Coast distance illustrates a continental shelf; this is not bathymetric data.
+   float shelf=1.0-smoothstep(0.0,0.7,surface.g);
+   vec3 water=mix(vec3(0.035,0.083,0.109),vec3(0.105,0.210,0.235),shelf*shelf);
+   water+=(broad-0.5)*0.008;
+   float waves=sin(dot(earth,vec3(680.0,210.0,320.0))+broad*5.0);
+   water+=waves*0.0025*detailFade*shelf;
+   base=vec4(water,1.0);
+  }else{
+   float h=surface.r;
+   // Relative elevation is geographic; climate colours are illustrative atlas styling.
+   float arid=max(max(dryZone(geo,vec2(20,24),vec2(38,15)),dryZone(geo,vec2(46,26),vec2(19,12))),max(dryZone(geo,vec2(134,-25),vec2(22,14)),dryZone(geo,vec2(70,42),vec2(30,12))));
+   arid=max(arid,max(dryZone(geo,vec2(-112,34),vec2(16,13))*0.68,dryZone(geo,vec2(20,-24),vec2(15,12))*0.8));
+   arid=clamp(arid+(broad-0.5)*0.20,0.0,1.0);
+   vec3 grass=mix(vec3(0.225,0.285,0.192),vec3(0.330,0.365,0.237),broad);
+   vec3 terrain=mix(grass,vec3(0.490,0.425,0.290),arid);
+   float rock=smoothstep(0.16,0.47,h);
+   terrain=mix(terrain,mix(vec3(0.380,0.370,0.300),vec3(0.490,0.485,0.440),broad),rock);
+   float snow=max(smoothstep(0.56,0.79,h),smoothstep(64.0,79.0,abs(geo.y)));
+   terrain=mix(terrain,vec3(0.730,0.760,0.720),snow);
+   float dx=texture(heightmap,uv+vec2(pixel.x,0)).r-texture(heightmap,uv-vec2(pixel.x,0)).r;
+   float dy=texture(heightmap,uv+vec2(0,pixel.y)).r-texture(heightmap,uv-vec2(0,pixel.y)).r;
+   vec3 normal=normalize(vec3(-dx*16.0,dy*16.0,1.0));
+   float shade=0.63+0.48*max(0.0,dot(normal,normalize(vec3(-0.65,0.72,0.85))));
+   terrain*=shade;
+   terrain+=fine*mix(0.020,0.036,rock)*(1.0-snow*0.6);
+   // Palette alpha is ownership tint strength; geographic fills remain opaque.
+   base=vec4(mix(terrain,base.rgb,base.a),1.0);
+  }
  }
+ if(border==0&&id<254)base.a=1.0;
  if(border==1)base=vec4(base.rgb*1.35,0.48);
- float light=globe==1?0.65+0.35*sqrt(max(depth,0)):1.0;color=vec4(base.rgb*light,base.a);
+ float light=globe==1?0.76+0.24*sqrt(max(depth,0)):1.0;color=vec4(base.rgb*light,base.a);
 })";
   static gl::UInt shader(gl::Enum type,const char* source){
     auto s=gl::CreateShader(type);
@@ -213,18 +248,18 @@ void main(){
     std::array<std::array<float,4>,256> colors{};
     for(size_t i=0;i<world.countries.size();++i){
       float h=float((i*37)%17)/17;
-      colors[i]={0.13f+h*0.045f,0.23f+h*0.055f,0.27f+h*0.065f,1};
-      if(world.canonical(int(i))==selectedNation)colors[i]={0.22f,0.58f,0.57f,1};
-      if(world.canonical(int(i))==s.player)colors[i]={0.13f,0.48f,0.42f,1};
-      if(world.canonical(int(i))==s.enemy)colors[i]={0.56f,0.23f,0.20f,1};
+      colors[i]={0.23f+h*0.045f,0.31f+h*0.055f,0.29f+h*0.035f,0.075f};
+      if(world.canonical(int(i))==selectedNation)colors[i]={0.22f,0.58f,0.57f,0.35f};
+      if(world.canonical(int(i))==s.player)colors[i]={0.13f,0.48f,0.42f,0.24f};
+      if(world.canonical(int(i))==s.enemy)colors[i]={0.56f,0.23f,0.20f,0.24f};
     }
     for(size_t i=0;i<s.regions.size();++i){
       float h=float(i%4)*0.025f;
       auto& r=s.regions[i];
-      colors[192+i]=r.owner==s.player?std::array<float,4>{0.13f+h,0.40f+h,0.36f+h,1}:std::array<float,4>{0.46f+h,0.22f+h,0.20f+h,1};
+      colors[192+i]=r.owner==s.player?std::array<float,4>{0.13f+h,0.40f+h,0.36f+h,0.26f}:std::array<float,4>{0.46f+h,0.22f+h,0.20f+h,0.26f};
       // Movement targets are orders, not an abstract offensive region.
 
-      if(int(i)==selectedRegion)colors[192+i]={0.34f,0.67f,0.63f,1};
+      if(int(i)==selectedRegion)colors[192+i]={0.34f,0.67f,0.63f,0.42f};
     }
     colors[254]={0.065f,0.14f,0.18f,0.6f};
     colors[255]={0.035f,0.09f,0.13f,1};
@@ -243,9 +278,9 @@ void main(){
     if(c.globe){
       gl::Enable(gl::DEPTH_TEST);
       gl::DepthFunc(gl::LEQUAL);
-      draw(ocean_,gl::TRIANGLES,c,1);
     }
     else gl::Disable(gl::DEPTH_TEST);
+    draw(ocean_,gl::TRIANGLES,c,1);
     draw(grid_,gl::LINES,c,1.001f);
     draw(land_,gl::TRIANGLES,c,1.003f);
     if(s.player>=0){

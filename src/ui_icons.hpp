@@ -5,12 +5,15 @@ inline void line(ImDrawList* d,ImVec2 c,float s,ImVec2 a,ImVec2 b,ImU32 color,fl
 inline void icon(ImDrawList* d,ImVec2 c,float size,int kind,ImU32 color){
  float s=size*.5f;auto l=[&](float ax,float ay,float bx,float by){line(d,c,s,{ax,ay},{bx,by},color);};
  auto circle=[&](float x,float y,float r){d->AddCircle({c.x+x*s,c.y+y*s},r*s,color,16,1.7f);};
- // Numeric IDs are stable for saved games; retired air/naval assets have no icon.
- if((kind>=3&&kind<=6)||kind==28||kind==31)return;
+ // Numeric IDs are stable for saved games; aircraft remain retired.
+ if((kind>=3&&kind<=4)||kind==31)return;
  // 0..8 units, 20+facility enum indices.
  if(kind==0){l(-.65,-.45,.65,.45);l(.65,-.45,-.65,.45);}
  else if(kind==1){d->AddEllipse(c,{.72f*s,.38f*s},color,0,24,1.7f);}
  else if(kind==2){d->AddCircleFilled(c,.2f*s,color,16);}
+ else if(kind==5){l(-.85,.1,-.6,.55);l(-.6,.55,.6,.55);l(.6,.55,.85,.1);l(-.85,.1,.85,.1);l(-.35,.1,-.35,-.4);l(-.35,-.4,.4,-.4);l(.4,-.4,.4,.1);l(0,-.4,0,-.85);l(-.65,.8,-.2,.8);l(.15,.8,.65,.8);}
+ else if(kind==6){d->AddEllipse(c,{.85f*s,.27f*s},color,0,24,1.7f);l(-.1,-.2,-.1,-.55);l(-.1,-.55,.3,-.55);l(.3,-.55,.3,-.2);l(.1,-.55,.1,-.8);}
+ else if(kind==28){l(-.8,.7,.8,.7);l(-.6,.35,.65,.35);l(-.6,.35,-.85,-.1);l(-.85,-.1,.85,-.1);l(.85,-.1,.65,.35);l(0,-.1,0,-.8);l(0,-.8,.7,-.8);l(.7,-.8,.7,-.3);l(-.5,-.1,-.5,-.55);}
  else if(kind==7){l(-.6,-.4,.6,.4);l(.6,-.4,-.6,.4);l(0,-.7,0,.7);}
  else if(kind==8||kind==29){l(-.25,.45,-.25,-.35);l(-.25,-.35,0,-.8);l(0,-.8,.25,-.35);l(.25,-.35,.25,.45);l(-.25,.45,.25,.45);l(-.25,.1,-.55,.65);l(.25,.1,.55,.65);l(-.15,.6,0,.85);l(.15,.6,0,.85);}
  else if(kind==20){l(-.75,.6,.1,-.5);l(-.4,-.7,.7,.4);l(-.75,-.35,-.35,-.75);l(.35,.75,.75,.35);}
@@ -28,7 +31,7 @@ inline void icon(ImDrawList* d,ImVec2 c,float size,int kind,ImU32 color){
  else {l(-.7,-.7,.7,.7);l(.7,-.7,-.7,.7);circle(0,0,.85);}
 }
 inline void badge(ImDrawList* d,ImVec2 c,float size,int kind,ImU32 color,bool selected=false,bool hostile=false){
- if((kind>=3&&kind<=6)||kind==28||kind==31)return;
+ if((kind>=3&&kind<=4)||kind==31)return;
  const ImU32 edge=selected?IM_COL32(220,240,255,255):color;
  if(kind<20){
    float x=size*.82f,y=size*.56f;

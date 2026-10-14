@@ -1,6 +1,6 @@
 # Native application screenshots
 
-Every image below was regenerated from the native **0.6.1** OpenGL client at **1440×900, 100% UI scale**. A second render at **1280×720, 125% scale** verified the compact layout. These are application captures, not concept mockups.
+Every image below was regenerated from the native **0.7.0** OpenGL client at **1440×900, 100% UI scale**. A second render at **1280×720, 125% scale** verified the compact layout. These are application captures, not concept mockups.
 
 ## Main menu
 
@@ -57,3 +57,15 @@ Every image below was regenerated from the native **0.6.1** OpenGL client at **1
 ## Ready building placement
 
 ![Ready building placement](placement.png)
+
+## Raised city models and population
+
+![Paris city inspection](city.png)
+
+## Naval weapons and shipyard service
+
+![Destroyer inspection](navy.png)
+
+## Naval research branches
+
+![Naval research](naval-research.png)

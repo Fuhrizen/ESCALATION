@@ -15,7 +15,7 @@
     if(panel!=None)return true;
     if(p.x<readyRailWidth(h))return true;
     if(p.x<190.f*uiScale&&p.y>h-navigationReserveHeight())return true;
-    if(selectedUnit>=0||selectedSite>=0||selectedRegion>=0){float width=inspectorWidth(w),height=inspectorHeight(h);if(p.x>w-width-12.f*uiScale&&p.y>h-height-12.f*uiScale)return true;}
+    if(selectedUnit>=0||selectedSite>=0||selectedRegion>=0||selectedSettlement>=0||selectedWorldCity>=0){float width=inspectorWidth(w),height=inspectorHeight(h);if(p.x>w-width-12.f*uiScale&&p.y>h-height-12.f*uiScale)return true;}
     return false;
   }
   float effectiveUiScale(float w,float h) const{

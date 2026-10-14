@@ -118,7 +118,7 @@ struct App {
   };
   Screen screen=Menu;
   Panel panel=None;
-  int selectedNation=-1,selectedRegion=-1,selectedSite=-1,selectedUnit=-1,construction=-1,readyUnitPlacement=-1,focus=5,speed=1;
+  int selectedNation=-1,selectedRegion=-1,selectedSite=-1,selectedSettlement=-1,selectedWorldCity=-1,selectedUnit=-1,construction=-1,readyUnitPlacement=-1,focus=5,speed=1;
   bool paused=true,regionOpen=false,unitOpen=false,nationOpen=false,commandMode=false,showRanges=true,autoResearch=false,leftStarted=false,rightDragged=false,treeFocus=false;
   double accumulator=0;
   Point pointer,leftStart,popup;
@@ -157,7 +157,7 @@ struct App {
     message=text;
   }
   void clearSelection(){
-    selectedRegion=selectedSite=selectedUnit=construction=readyUnitPlacement=-1;
+    selectedRegion=selectedSite=selectedSettlement=selectedWorldCity=selectedUnit=construction=readyUnitPlacement=-1;
     selectedUnits.clear();
     for(auto& group:controlGroups)group.clear();
     orderPreviews.clear();
@@ -296,7 +296,7 @@ struct App {
         auto type=sim.state.units[selectedUnit].type;
         for(size_t i=0;i<sim.state.units.size();++i){const auto& u=sim.state.units[i];bool visible=false;auto p=camera.project(u.position,&visible);if(u.owner==sim.state.player&&u.deployed&&u.type==type&&u.health>0&&u.remaining<=0&&visible&&p.x>=camera.x&&p.x<camera.x+camera.width&&p.y>=camera.y&&p.y<camera.y+camera.height&&std::find(selectedUnits.begin(),selectedUnits.end(),int(i))==selectedUnits.end())selectedUnits.push_back(int(i));}
       }
-      selectedSite=-1;selectedRegion=-1;
+      selectedSite=selectedSettlement=selectedWorldCity=-1;selectedRegion=-1;
       unitOpen=selectedUnit>=0;
       regionOpen=false;
       popup=pointer;
@@ -305,7 +305,7 @@ struct App {
     selectedUnits.clear();
     unitOpen=false;
     selectedRegion=sim.regionAt(geo);
-    selectedSite=-1;
+    selectedSite=selectedSettlement=selectedWorldCity=-1;
     nearest=16;
     for(size_t i=0;i<sim.state.sites.size();++i){
       auto& s=sim.state.sites[i];
@@ -318,6 +318,11 @@ struct App {
         selectedSite=int(i);
         selectedRegion=s.region;
       }
+    }
+    if(selectedSite<0&&showCities){
+      selectedSettlement=cityPick(pointer);
+      if(selectedSettlement>=0)selectedRegion=sim.state.settlements[selectedSettlement].region;
+      else {selectedWorldCity=worldCityPick(pointer);if(selectedWorldCity>=0)selectedRegion=-1;}
     }
     regionOpen=selectedRegion>=0;
     popup=pointer;
@@ -369,12 +374,12 @@ struct App {
           else{
             if(!io.KeyShift)selectedUnits.clear();
             for(int id:controlGroups[n])if(id>=0&&id<int(sim.state.units.size())&&sim.state.units[id].owner==sim.state.player&&sim.state.units[id].deployed&&sim.state.units[id].health>0&&std::find(selectedUnits.begin(),selectedUnits.end(),id)==selectedUnits.end())selectedUnits.push_back(id);
-            selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=selectedRegion=-1;unitOpen=selectedUnit>=0;
+            selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=selectedRegion=selectedSettlement=selectedWorldCity=-1;unitOpen=selectedUnit>=0;
           }
         }
         if(io.KeyCtrl&&ImGui::IsKeyPressed(ImGuiKey_A,false)){
           selectedUnits.clear();for(size_t i=0;i<sim.state.units.size();++i){const auto& u=sim.state.units[i];bool visible=false;auto p=camera.project(u.position,&visible);if(u.owner==sim.state.player&&u.deployed&&u.health>0&&u.remaining<=0&&visible&&p.x>=camera.x&&p.x<camera.x+camera.width&&p.y>=camera.y&&p.y<camera.y+camera.height)selectedUnits.push_back(int(i));}
-          selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=selectedRegion=-1;unitOpen=selectedUnit>=0;
+          selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=selectedRegion=selectedSettlement=selectedWorldCity=-1;unitOpen=selectedUnit>=0;
         }
         if(ImGui::IsKeyPressed(ImGuiKey_X,false)){for(int id:selectedUnits)sim.holdUnit(size_t(id));notice("Selected formations stopped");}
       }
@@ -450,7 +455,7 @@ struct App {
           auto p=camera.project(displayedUnit(size_t(&u-sim.state.units.data())),&visible);
           if(visible&&p.x>=std::min(leftStart.x,pointer.x)&&p.x<=std::max(leftStart.x,pointer.x)&&p.y>=std::min(leftStart.y,pointer.y)&&p.y<=std::max(leftStart.y,pointer.y)){auto found=std::find(selectedUnits.begin(),selectedUnits.end(),int(i));if(found==selectedUnits.end())selectedUnits.push_back(int(i));else if(io.KeyShift)selectedUnits.erase(found);}
         }
-        selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=-1;selectedRegion=-1;
+        selectedUnit=selectedUnits.empty()?-1:selectedUnits.front();selectedSite=selectedSettlement=selectedWorldCity=-1;selectedRegion=-1;
         if(!selectedUnits.empty()){
           selectedUnit=selectedUnits.front();
           unitOpen=true;
@@ -521,7 +526,7 @@ struct App {
     ImGui::Text("Reference population: %.1f M",world.countries[selectedNation].population/1e6);
     ImGui::Text("Reference GDP: $%.1f B",world.countries[selectedNation].gdp/1000);
     wrapped("Rival: "+world.countries[world.opponent(selectedNation)].name);
-    ImGui::Combo("Doctrine",&focus,fieldNames.data(),8);
+    ImGui::Combo("Doctrine",&focus,fieldNames.data(),int(fieldNames.size()));
     if(ImGui::Button("Take command",{
       -1,34
     }))start();
@@ -703,6 +708,33 @@ int main(int argc,char** argv){
       if(smoke&&frame==22){app.openPause();}
       if(smoke&&frame==24){app.pauseOpen=false;app.panel=App::Build;app.sim.queueBuilding(Facility::ArmyBase);app.sim.state.buildingInventory[int(Facility::Radar)]=1;}
       if(smoke&&frame==26){app.panel=App::None;app.sim.state.buildingInventory[int(Facility::ArmyBase)]=1;app.construction=int(Facility::ArmyBase);}
+      if(smoke&&frame==28){
+        app.clearSelection();app.panel=App::None;app.construction=-1;app.camera.globe=false;
+        for(size_t i=0;i<app.world.cities.size();++i)if(app.world.cities[i].name=="Paris"&&app.world.cities[i].countryCode=="FRA"){
+          app.selectedWorldCity=int(i);app.center(app.world.cities[i].position);app.camera.zoom=144;
+          for(size_t j=0;j<app.sim.state.settlements.size();++j)if(app.sim.state.settlements[j].name=="Paris"){app.selectedSettlement=int(j);app.selectedWorldCity=-1;break;}break;
+        }
+      }
+      if(smoke&&frame==30){
+        app.clearSelection();app.panel=App::None;
+        for(int id=112;id<122;++id)app.sim.state.completed[id]=true;
+        app.sim.state.buildingInventory[int(Facility::Shipyard)]=1;
+        Point land{},water{};int region=-1;
+        for(const auto& polygon:app.world.countries[app.sim.state.player].polygons){if(region>=0)break;if(polygon.rings.empty())continue;for(Point v:polygon.rings.front()){
+          if(region>=0)break;
+          for(int a=0;a<32&&region<0;++a){double angle=a*6.28318530718/32;Point candidate{v.x+.015*std::cos(angle),v.y+.015*std::sin(angle)};int r=app.sim.regionAt(candidate);if(r<0||!app.sim.placementReason(Facility::Shipyard,r,candidate).empty())continue;
+            for(int b=0;b<32;++b){double theta=b*6.28318530718/32;Point sea{candidate.x+.06*std::cos(theta),candidate.y+.06*std::sin(theta)};if(app.world.pick(sea)<0&&app.world.canonical(nearestCoastNation(app.world,sea))==app.sim.state.player){region=r;land=candidate;water=sea;break;}}
+          }
+        }}
+        if(region>=0&&app.sim.placeBuilding(Facility::Shipyard,region,land)){
+          int yard=int(app.sim.state.sites.size())-1;
+          if(app.sim.queueUnit(UnitType::Destroyer,yard)){int ship=int(app.sim.state.units.size())-1;app.sim.state.units[ship].remaining=0;
+            if(app.sim.deployUnit(UnitType::Destroyer,water)){app.selectedUnit=ship;app.selectedUnits={ship};app.center(water);app.camera.zoom=22;}
+          }
+          app.sim.queueUnit(UnitType::Submarine,yard);
+        }
+      }
+      if(smoke&&frame==32){app.clearSelection();app.panel=App::Research;app.focus=8;app.treeFocus=true;}
       app.windowFocused=smoke||glfwGetWindowAttrib(window,GLFW_FOCUSED);
       app.frame(float(w),float(h),smoke?0.016:dt);
       ImGui::Render();
@@ -714,7 +746,7 @@ int main(int argc,char** argv){
         if(gl::GetError()!=0)throw std::runtime_error("OpenGL error during smoke render");
       }
       if(!smoke)glfwSwapBuffers(window);
-      if(smoke&&++frame>=28)break;
+      if(smoke&&++frame>=34)break;
     }
     if(!smoke&&app.sim.state.player>=0)app.save(true);
     app.saveSettings();

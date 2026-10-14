@@ -59,3 +59,9 @@ Focused simulation, tactical and native-input suites passed. Coverage includes m
 ## 0.6.1 layout correction
 
 The existing native-input suite passed; native renders verify that the shared page gutter clears both navigation columns. Native rendering at 1440×900/100% and 1280×720/125% covers full-page fabrication, intact navigation buttons, borderless inventory tiles, and wrapped grid content. All fourteen documented screenshots are generated from this patch. No simulation or balance changes required a repeated core/combat sweep.
+
+## 0.7.0 focused integration
+
+The native client built successfully. Four targeted CTest suites passed: simulation (14,504 checks), tactical combat (95 scenarios), native input (19 integration checks), and OpenGL smoke. New coverage includes independent simultaneous weapon launches, target-specific minimum/maximum ranges, guided versus snapshot impacts, ammunition slots, shipyard placement/manufacture/deployment, ocean detours and queued naval orders, port rearming/repair, and version-7 save restoration with previous technology-tree migration.
+
+Seventeen native states were captured at 1440×900/100% and 1280×720/125%. The new terrain shader compiled and rendered without GL errors; city/population, monument, naval capability and naval research views were inspected. Floating weapon labels were removed, and port-service capability text was shortened after visual review. All documented screenshots were refreshed. No broad sanitizer, packaging or cross-platform sweep was repeated. This pass does not establish full ICBM parity, competitive balance or Windows runtime validation.

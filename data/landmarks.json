@@ -1,0 +1,30 @@
+{
+  "license": "Original procedural meshes. Geographic facts only; no external monument art.",
+  "presentation": "Symbolic isometric models anchored to geographic coordinates; dimensions are not real scale.",
+  "landmarks": [
+    {
+      "name": "Eiffel Tower",
+      "lon": 2.2945,
+      "lat": 48.8584,
+      "model": "lattice-tower",
+      "location_source": "https://www.toureiffel.paris/en/access-map",
+      "note": "Official operator confirms Champ de Mars location; point is rounded monument location."
+    },
+    {
+      "name": "Statue of Liberty",
+      "lon": -74.044722,
+      "lat": 40.689444,
+      "model": "statue",
+      "location_source": "https://whc.unesco.org/en/list/307/maps/",
+      "note": "UNESCO coordinate N40 41 22 W74 2 41."
+    },
+    {
+      "name": "Giza pyramid fields",
+      "lon": 31.13041,
+      "lat": 29.97604,
+      "model": "pyramids",
+      "location_source": "https://whc.unesco.org/en/list/86/maps/",
+      "note": "UNESCO component 86-002 reference point N29 58 33.744 E31 7 49.476; this represents the pyramid field, not the apex of a specific pyramid."
+    }
+  ]
+}

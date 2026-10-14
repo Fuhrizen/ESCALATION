@@ -13,7 +13,7 @@
     d->AddText(a,color,text.c_str());
   }
   static ImU32 attackColor(UnitType type,int alpha=190){
-    if(!groundUnit(type))return IM_COL32(0,0,0,0);
+    if(!activeUnit(type))return IM_COL32(0,0,0,0);
     return IM_COL32(80,169,255,alpha);
   }
   void geographicalRing(ImDrawList* draw,Point centre,double kilometres,ImU32 color,bool dashed=false){
@@ -122,10 +122,55 @@
       geographicLine(draw,river.points,IM_COL32(95,167,210,int(165*fade)),1.1f+1.0f*reveal(camera.zoom,14,100));
     }
   }
+  int cityPick(Point pointer) const{
+    if(!showCities)return -1;int picked=-1;double nearest=14*uiScale;
+    for(size_t n=0;n<sim.state.settlements.size();++n){bool visible=false;auto p=camera.project(sim.state.settlements[n].position,&visible);double distance=std::hypot(p.x-pointer.x,p.y-pointer.y);if(visible&&distance<nearest){nearest=distance;picked=int(n);}}return picked;
+  }
+  int worldCityPick(Point pointer) const{
+    if(!showCities||camera.zoom<6)return -1;int picked=-1;double nearest=14*uiScale;
+    for(size_t n=0;n<world.cities.size();++n){const auto& city=world.cities[n];if(camera.zoom<16&&city.population<500000)continue;bool visible=false;auto p=camera.project(city.position,&visible);double distance=std::hypot(p.x-pointer.x,p.y-pointer.y);if(visible&&distance<nearest){nearest=distance;picked=int(n);}}return picked;
+  }
+  // Original isometric meshes anchored to real projected geographic positions.
+  // Building height is symbolic; reference population controls cluster density.
+  void cityMesh(ImDrawList* draw,Point centre,double population,ImU32 color,bool selected=false){
+    float fade=reveal(camera.zoom,5,25);if(fade<.01||population<=0)return;
+    float scale=(.55f+.65f*reveal(camera.zoom,20,120))*uiScale;
+    int count=std::clamp(int(std::log10(std::max(1.0,population)))*2-5,2,11);
+    auto col=[&](int r,int g,int b,int a=255){return IM_COL32(r,g,b,int(a*fade));};
+    auto prism=[&](float x,float y,float width,float depth,float height){
+      auto project=[&](float ax,float ay,float z){return ImVec2{float(centre.x)+(ax-ay)*scale,float(centre.y)+(ax+ay)*.42f*scale-z*scale};};
+      ImVec2 a=project(x,y,0),b=project(x+width,y,0),c=project(x+width,y+depth,0),e=project(x,y+depth,0),at=project(x,y,height),bt=project(x+width,y,height),ct=project(x+width,y+depth,height),et=project(x,y+depth,height);
+      ImVec2 shadow[]={a,b,{c.x+height*.45f*scale,c.y+height*.24f*scale},{e.x+height*.45f*scale,e.y+height*.24f*scale}};draw->AddConvexPolyFilled(shadow,4,col(2,8,14,95));
+      ImVec2 right[]={bt,b,c,ct},left[]={ct,c,e,et},roof[]={at,bt,ct,et};draw->AddConvexPolyFilled(right,4,col(65,82,94));draw->AddConvexPolyFilled(left,4,col(91,111,124));draw->AddConvexPolyFilled(roof,4,col(174,187,187));draw->AddPolyline(roof,4,col(206,216,207,150),ImDrawFlags_Closed,.6f);
+      if(height>8&&scale>.7f)for(float z=3;z<height-2;z+=4){auto a=project(x+width,y+.8f,z),b=project(x+width,y+depth-.8f,z);draw->AddLine(a,b,col(194,199,159,130),.7f);}
+    };
+    draw->AddEllipseFilled({float(centre.x),float(centre.y)+3*scale},{18*scale,7*scale},col(23,37,38,115),0,24);
+    for(int n=0;n<count;++n){float x=(n%4-1.5f)*6,y=(n/4-1.f)*6;float height=5+float((n*7+count*3)%14);if(n==count/2&&population>1000000)height+=12;prism(x,y,4,4,height);}
+    if(selected)draw->AddEllipse(vec(centre),{22*scale,10*scale},color,0,32,1.5f);
+  }
+  void landmarksOverlay(ImDrawList* draw){
+    if(!showCities)return;float fade=reveal(camera.zoom,12,40);if(fade<.01)return;
+    struct Monument{const char* name;Point position;int model;};
+    // Coordinates: official Eiffel access map, UNESCO property maps (Liberty,
+    // Giza pyramid fields). Symbolic original meshes, no downloaded artwork.
+    static const Monument monuments[]={{"Eiffel Tower",{2.2945,48.8584},0},{"Statue of Liberty",{-74.044722,40.689444},1},{"Giza pyramid fields",{31.13041,29.97604},2}};
+    for(const auto& monument:monuments){bool visible=false;auto p=camera.project(monument.position,&visible);if(!visible)continue;float scale=(.7f+.6f*reveal(camera.zoom,30,120))*uiScale;
+      auto at=[&](float x,float y,float z){return ImVec2{float(p.x)+(x-y)*scale,float(p.y)+(x+y)*.4f*scale-z*scale};};
+      auto color=[&](int r,int g,int b){return IM_COL32(r,g,b,int(255*fade));};
+      draw->AddEllipseFilled({float(p.x)+6*scale,float(p.y)+3*scale},{13*scale,5*scale},IM_COL32(0,6,13,int(95*fade)),0,24);
+      auto line=[&](float x,float y,float z,float a,float b,float c){draw->AddLine(at(x,y,z),at(a,b,c),color(218,205,158),1.3f*scale);};
+      if(monument.model==0){for(int x:{-1,1})for(int y:{-1,1}){line(x*8,y*8,0,x*3,y*3,20);line(x*3,y*3,20,0,0,42);}for(int z:{10,20,28}){float width=z==10?6:z==20?3:2;line(-width,-width,z,width,-width,z);line(width,-width,z,width,width,z);line(width,width,z,-width,width,z);}line(0,0,42,0,0,49);}
+      else if(monument.model==1){ImVec2 front[]={at(-6,4,0),at(6,4,0),at(6,4,11),at(-6,4,11)};draw->AddConvexPolyFilled(front,4,color(165,159,138));ImVec2 side[]={at(6,4,0),at(6,-4,0),at(6,-4,11),at(6,4,11)};draw->AddConvexPolyFilled(side,4,color(102,113,104));ImVec2 robe[]={at(-4,0,11),at(4,0,11),at(2,0,28),at(-2,0,28)};draw->AddConvexPolyFilled(robe,4,color(109,166,143));draw->AddCircleFilled(at(0,0,31),2.3f*scale,color(131,190,164),12);draw->AddLine(at(1,0,26),at(8,0,39),color(131,190,164),3*scale);draw->AddCircleFilled(at(8,0,41),2*scale,color(245,215,112),12);for(int n=-2;n<=2;++n)draw->AddLine(at(n,0,32),at(n*2,0,36-std::abs(n)),color(131,190,164),scale);}
+      else for(int n=0;n<3;++n){float x=n*17-16,y=n*4,width=12-n*2,height=20-n*4;ImVec2 a=at(x-width,y,0),b=at(x+width,y,0),c=at(x,y+width,0),top=at(x,y,height);draw->AddTriangleFilled(a,b,top,color(208,184,123));draw->AddTriangleFilled(b,c,top,color(164,137,87));}
+      if(camera.zoom>28)label(draw,{p.x+12*scale,p.y-35*scale},monument.name,color(235,221,178));
+    }
+  }
   void mapLabels(){
     if(screen==Menu||(screen==Game&&panel!=None))return;
     auto* draw=ImGui::GetBackgroundDrawList();draw->PushClipRect({camera.x,camera.y},{camera.x+camera.width,camera.y+camera.height},true);
     riversOverlay(draw);roadsOverlay(draw);
+    if(showCities&&camera.zoom>5){for(size_t n=0;n<world.cities.size();++n){const auto& city=world.cities[n];if(camera.zoom<16&&city.population<500000)continue;bool visible=false;auto p=camera.project(city.position,&visible);if(!visible||p.x<camera.x-40||p.x>camera.x+camera.width+40||p.y<camera.y-40||p.y>camera.y+camera.height+60)continue;cityMesh(draw,p,city.population,IM_COL32(170,197,188,255),selectedWorldCity==int(n));if(camera.zoom>40&&city.population>250000)label(draw,p,city.name,IM_COL32(182,207,194,215));}}
+    landmarksOverlay(draw);
     if(screen==Game)pressureOverlay(draw);
     std::vector<Point> named;
     if(camera.zoom>2.5&&camera.zoom<22)for(size_t i=0;i<world.countries.size();++i){
@@ -142,6 +187,7 @@
         std::vector<Point> labels;
         for(auto n:order){const auto& city=s.settlements[n];bool main=sim.mainSettlement(city.region)==int(n);bool visible=false;auto p=camera.project(city.position,&visible);if(!visible)continue;
           ImU32 c=city.owner==s.player?IM_COL32(142,201,249,255):IM_COL32(255,153,95,255);float r=main?4.2f:2.7f;
+          if(selectedSettlement==int(n))draw->AddCircle(vec(p),r+9,IM_COL32(226,241,255,255),24,2);
           draw->AddCircleFilled(vec(p),r+2,IM_COL32(8,17,28,240));draw->AddCircleFilled(vec(p),r,c);
           if(main)draw->AddCircle(vec(p),r+3,IM_COL32(234,213,167,200),20,1.0f);
           if(city.capture>0){draw->PathArcTo(vec(p),r+6,-1.5708f,-1.5708f+float(city.capture)*6.28318f,32);draw->PathStroke(IM_COL32(248,199,104,240),0,2);}
@@ -149,7 +195,7 @@
           if(clear){label(draw,p,city.name,c);labels.push_back(p);}
         }
       }
-      for(size_t n=0;n<s.sites.size();++n){const auto& site=s.sites[n];if(site.destroyed||site.type==Facility::Shipyard||site.type==Facility::Airbase)continue;bool visible=false;auto p=camera.project(site.position,&visible);if(!visible)continue;
+      for(size_t n=0;n<s.sites.size();++n){const auto& site=s.sites[n];if(site.destroyed||site.type==Facility::Airbase)continue;bool visible=false;auto p=camera.project(site.position,&visible);if(!visible)continue;
         bool selected=selectedSite==int(n),hovered=hoverSite==int(n);ImU32 color=s.regions[site.region].owner==s.player?IM_COL32(102,178,249,255):IM_COL32(255,135,78,255);if(!site.enabled)color=IM_COL32(128,145,154,255);
         command_icons::badge(draw,vec(p),16,20+int(site.type),color,selected||hovered);
         if(showRanges&&(selected||hovered)){
@@ -157,20 +203,10 @@
           else if(site.type==Facility::IndustrialPark||site.type==Facility::Factory)regionEffect(draw,site.region,IM_COL32(128,210,198,195));
         }
       }
-      for(size_t n=0;n<s.units.size();++n){const auto& unit=s.units[n];if(unit.health<=0||!unit.deployed||!groundUnit(unit.type))continue;bool visible=false;Point actual=displayedUnit(n),p=camera.project(actual,&visible);if(!visible)continue;
+      for(size_t n=0;n<s.units.size();++n){const auto& unit=s.units[n];if(unit.health<=0||!unit.deployed||!activeUnit(unit.type))continue;bool visible=false;Point actual=displayedUnit(n),p=camera.project(actual,&visible);if(!visible)continue;
         bool selected=std::find(selectedUnits.begin(),selectedUnits.end(),int(n))!=selectedUnits.end()||selectedUnit==int(n),hovered=hoverUnit==int(n);
         ImU32 color=unit.owner==s.player?IM_COL32(91,174,255,255):IM_COL32(255,135,78,255);if(unit.remaining>0)color=IM_COL32(226,189,115,255);
-        if(showRanges&&(selected||hovered)&&unit.remaining<=0){geographicalRing(draw,actual,sim.unitRangeKm(unit),unit.owner==s.player?attackColor(unit.type):IM_COL32(255,135,78,170));}
-        if(sim.state.war&&(selected||hovered)&&unit.remaining<=0){
-          int target=-1;double nearest=sim.unitRangeKm(unit);
-          for(size_t t=0;t<s.units.size();++t){const auto& enemy=s.units[t];if(enemy.owner==unit.owner||enemy.health<=0||!enemy.deployed||!groundUnit(enemy.type)||enemy.remaining>0||!canEngage(unit.type,enemy.type))continue;double d=distanceKm(unit.position,enemy.position);if(d<=nearest){nearest=d;target=int(t);}}
-          if(target>=0){
-            Point end=displayedUnit(size_t(target));std::vector<Point> shot={actual,end};geographicLine(draw,shot,IM_COL32(248,190,100,115),1.3f);
-            double pulse=std::fmod(s.day*simulationTickSeconds+accumulator,1.0);bool visible=false;
-            auto spark=camera.project({std::remainder(actual.x+std::remainder(end.x-actual.x,360.0)*pulse,360.0),actual.y+(end.y-actual.y)*pulse},&visible);
-            if(visible)draw->AddCircleFilled(vec(spark),2.5f,IM_COL32(255,218,146,220));
-          }
-        }
+        if(showRanges&&(selected||hovered)&&unit.remaining<=0){auto weapons=sim.unitWeapons(unit);for(size_t w=0;w<weapons.size();++w){const auto& weapon=weapons[w];ImU32 ring=weapon.targetMask&4?IM_COL32(101,223,188,165):weapon.targetMask&2?IM_COL32(190,158,249,165):IM_COL32(98,181,255,165);geographicalRing(draw,actual,weapon.maxRangeKm,ring,w%2!=0);if(weapon.minRangeKm>0)geographicalRing(draw,actual,weapon.minRangeKm,ring,true);}}
         if(selected&&unit.moving){
           const auto& planned=orderPreview(n).path;
           std::vector<Point> route={actual};route.insert(route.end(),unit.waypoints.begin(),unit.waypoints.end());geographicLine(draw,route,IM_COL32(128,199,255,235),2.0f,true,false);
@@ -182,17 +218,19 @@
         unitSymbol(draw,p,unit.type,color,selected||hovered,unit.owner!=s.player);
         for(int pip=0;pip<3;++pip){ImVec2 dot{float(p.x)+(pip-1)*6,float(p.y)-15};draw->AddCircleFilled(dot,2.4f,unit.health>pip*100.0/3?color:IM_COL32(33,48,67,230),12);draw->AddCircle(dot,2.4f,IM_COL32(6,16,30,230),12,1); }
       }
-      if(readyUnitPlacement>=0&&readyUnitPlacement<int(UnitType::Count)&&groundUnit(UnitType(readyUnitPlacement))&&!ImGui::GetIO().WantCaptureMouse){
+      // Runtime engagements snapshot each actual fired shot and finite travel time.
+      for(const auto& shot:s.engagements){double progress=std::clamp(1-shot.remaining/std::max(.001,shot.total),0.0,1.0);Point moving{std::remainder(shot.origin.x+std::remainder(shot.target.x-shot.origin.x,360.0)*progress,360.0),shot.origin.y+(shot.target.y-shot.origin.y)*progress};bool visible=false;auto p=camera.project(moving,&visible);if(!visible)continue;ImU32 color=shot.targetMask&4?IM_COL32(104,229,207,235):IM_COL32(255,219,149,235);geographicLine(draw,{shot.origin,moving},IM_COL32(245,208,139,105),1.2f,false,false);if(shot.guided){Point prior{std::remainder(shot.origin.x+std::remainder(shot.target.x-shot.origin.x,360.0)*std::max(0.0,progress-.02),360.0),shot.origin.y+(shot.target.y-shot.origin.y)*std::max(0.0,progress-.02)};auto q=camera.project(prior);double length=std::hypot(p.x-q.x,p.y-q.y);float dx=length>.01?float((p.x-q.x)/length):1,dy=length>.01?float((p.y-q.y)/length):0;draw->AddTriangleFilled({float(p.x)+dx*4,float(p.y)+dy*4},{float(p.x)-dx*3-dy*2,float(p.y)-dy*3+dx*2},{float(p.x)-dx*3+dy*2,float(p.y)-dy*3-dx*2},color);}else draw->AddCircleFilled(vec(p),2.f,color,12);}
+      if(readyUnitPlacement>=0&&readyUnitPlacement<int(UnitType::Count)&&activeUnit(UnitType(readyUnitPlacement))&&!ImGui::GetIO().WantCaptureMouse){
         const auto type=UnitType(readyUnitPlacement);auto geo=camera.unproject(pointer);
-        std::string reason=geo?sim.deploymentReason(type,*geo):"Choose visible controlled land";
+        std::string reason=geo?sim.deploymentReason(type,*geo):(navalUnit(type)?"Choose visible water near a friendly shipyard":"Choose visible controlled land");
         const ImU32 color=reason.empty()?IM_COL32(91,174,255,230):IM_COL32(255,135,78,230);
-        if(geo&&showRanges){Unit preview;preview.type=type;preview.owner=s.player;preview.position=*geo;geographicalRing(draw,*geo,sim.unitRangeKm(preview),color,true);}
+        if(geo&&showRanges){Unit preview;preview.type=type;preview.owner=s.player;preview.position=*geo;for(const auto& weapon:sim.unitWeapons(preview))geographicalRing(draw,*geo,weapon.maxRangeKm,color,true);}
         unitSymbol(draw,pointer,type,color,true);
         label(draw,{pointer.x+24,pointer.y},reason.empty()?"Deploy "+std::string(unitNames[readyUnitPlacement]):reason,color);
       }
-      if(construction>=0&&Facility(construction)!=Facility::Shipyard&&Facility(construction)!=Facility::Airbase&&!ImGui::GetIO().WantCaptureMouse){
+      if(construction>=0&&Facility(construction)!=Facility::Airbase&&!ImGui::GetIO().WantCaptureMouse){
         auto geo=camera.unproject(pointer);int region=geo?sim.regionAt(*geo):-1;
-        std::string reason=geo?sim.placementReason(Facility(construction),region,*geo):"Choose visible controlled land";
+        std::string reason=geo?sim.placementReason(Facility(construction),region,*geo):(Facility(construction)==Facility::Shipyard?"Choose a visible controlled coast":"Choose visible controlled land");
         ImU32 color=reason.empty()?IM_COL32(91,174,255,230):IM_COL32(255,135,78,230);
         command_icons::badge(draw,vec(pointer),23,20+construction,color,true);
         label(draw,{pointer.x+16,pointer.y},reason.empty()?"Place "+std::string(facilityNames[construction]):reason,color);

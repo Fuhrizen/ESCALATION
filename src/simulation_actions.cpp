@@ -31,6 +31,11 @@ namespace escalation {
     if(state.buildingInventory[int(type)]<=0)return "Manufacture this building first";
     auto reason=buildReason(r,type);if(!reason.empty())return reason;
     if(!std::isfinite(p.x)||!std::isfinite(p.y)||regionAt(p)!=r)return "Place on controlled land";
+    if(type==Facility::Shipyard){
+      bool coast=false;
+      for(int angle=0;angle<32;++angle){double a=angle*6.28318530718/32;Point q{p.x+0.04*std::cos(a)/std::max(.2,std::cos(p.y*.01745329252)),p.y+0.04*std::sin(a)};if(world_->pick(q)<0){coast=true;break;}}
+      if(!coast)return "Shipyards require controlled coast within 5 km of ocean";
+    }
     return "";
   }
   bool Simulation::placeBuilding(Facility type,int r,Point p){
@@ -84,13 +89,13 @@ namespace escalation {
     if(state.units.size()>=1000)return "Campaign unit history capacity reached";
     int n=int(t);
     if(n<0||n>=9)return "Unknown unit";
-    if(!ground(t))return "Retired air or naval unit";
+    if(!activeUnit(t))return "Retired air unit";
     if(site<0||site>=int(state.sites.size()))return "Select a production building";
     auto& s=state.sites[site];
     if(s.region<0||s.region>=int(state.regions.size())||s.destroyed||!s.enabled||s.remaining>0||state.regions[s.region].owner!=state.player)return "Production building is not operational";
-    Facility needed=t==UnitType::MissileLauncher?Facility::Silo:Facility::ArmyBase;
+    Facility needed=navalUnit(t)?Facility::Shipyard:t==UnitType::MissileLauncher?Facility::Silo:Facility::ArmyBase;
     if(s.type!=needed&&!(s.type==Facility::Factory&&ground(t)))return std::string("Requires ")+facilityNames[int(needed)];
-    int prerequisite=t==UnitType::Armour?7:t==UnitType::Artillery?9:t==UnitType::SpecialForces?46:t==UnitType::MissileLauncher?62:-1;
+    int prerequisite=t==UnitType::Destroyer?113:t==UnitType::Submarine?114:t==UnitType::Armour?7:t==UnitType::Artillery?9:t==UnitType::SpecialForces?46:t==UnitType::MissileLauncher?62:-1;
     if(prerequisite>=0&&!hasTech(prerequisite))return "Requires "+techs[prerequisite].name;
 
     int alive=0;

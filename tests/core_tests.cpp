@@ -2,6 +2,7 @@
 #include "escalation/json.hpp"
 #include <algorithm>
 #include <cmath>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -45,11 +46,11 @@ int main(){try{
   auto flags=readJson("data/flags.json");for(auto& c:w.countries)check(flags.get<Object>().at("nations").get<Object>().count(c.code)==1,"flag coverage");
 
   Simulation s(w);s.start(fra,Field::Army,false);
-  check(s.state.regions.size()==48&&s.techs.size()==112,"campaign and tech catalogue initialized");
+  check(s.state.regions.size()==48&&s.techs.size()==122,"campaign and tech catalogue initialized");
   check(s.techs[4].prerequisites==std::vector<int>{1}&&s.techs[7].prerequisites==std::vector<int>{1},"motor and mechanised transport are parallel mobility choices");
   for(const auto& tech:s.techs)for(int p:tech.prerequisites)check(tech.year>=s.techs[p].year,"research reference year never precedes a prerequisite");
   check(s.state.simpleEconomy&&s.state.money==0,"regional output replaces currency economy");
-  check(s.state.units.size()==8,"both nations have starting forces");
+  check(s.state.units.size()>=8,"both nations have starting ground forces");
   check(s.state.outputRate>0,"initial output estimate available without advancing time");
   check(!s.queueResearch(1),"research prerequisites enforced");
   check(s.queueResearch(0)&&!s.queueResearch(0),"research queues once without payment");
@@ -97,7 +98,7 @@ int main(){try{
   check(s.state.sites.back().remaining==0,"ready building is operational when placed");
   s.state.buildingInventory[int(Facility::Shipyard)]=1;
   check(!s.placementReason(Facility::Shipyard,home,s.state.regions[home].center).empty(),"shipyard preview rejects inland placement");
-  check(!s.placeBuilding(Facility::Shipyard,home,s.state.regions[home].center)&&s.state.buildingInventory[int(Facility::Shipyard)]==1,"retired shipyard placement preserves inventory");s.state.buildingInventory[int(Facility::Shipyard)]=0;
+  check(!s.placeBuilding(Facility::Shipyard,home,s.state.regions[home].center)&&s.state.buildingInventory[int(Facility::Shipyard)]==1,"inland shipyard placement preserves inventory");s.state.buildingInventory[int(Facility::Shipyard)]=0;
   near(s.state.units[recruit].remaining,100-(output*simulationTickSeconds*0.1-0.01),"unused share flows to unfinished jobs");
   double unitWork=s.state.units[recruit].remaining;s.state.researchBudget=1;s.refreshRates();s.tick();
   near(s.state.units[recruit].remaining,unitWork,"full research allocation pauses production");
@@ -185,6 +186,48 @@ int main(){try{
   for(int n=0;n<50;++n){s.tick();loaded.tick();}
   near(loaded.state.research.front().progress,s.state.research.front().progress,"restored research continues deterministically");
   for(size_t i=0;i<s.state.units.size();++i)near(loaded.state.units[i].remaining,s.state.units[i].remaining,"restored production continues deterministically");
+  Simulation navy(w);navy.start(fra,Field::Naval);
+  check(navy.techs[112].field==Field::Naval&&navy.techs[113].prerequisites==std::vector<int>{112}&&navy.techs[114].prerequisites==std::vector<int>{112},"naval research branches append after stable ground IDs");
+  navy.state.completed[112]=navy.state.completed[113]=navy.state.completed[114]=true;
+  navy.state.buildingInventory[int(Facility::Shipyard)]=1;
+  Point yardPoint{},waterPoint{};int coastalRegion=-1;
+  for(const auto& polygon:w.countries[fra].polygons){if(coastalRegion>=0)break;if(polygon.rings.empty())continue;for(Point v:polygon.rings.front()){
+    if(coastalRegion>=0)break;
+    for(int a=0;a<32&&coastalRegion<0;++a){double angle=a*6.28318530718/32;Point land{v.x+.015*std::cos(angle),v.y+.015*std::sin(angle)};int r=navy.regionAt(land);if(r<0||!navy.placementReason(Facility::Shipyard,r,land).empty())continue;
+      for(int b=0;b<32;++b){double theta=b*6.28318530718/32;Point sea{land.x+.06*std::cos(theta),land.y+.06*std::sin(theta)};if(w.pick(sea)<0&&w.canonical(nearestCoastNation(w,sea))==fra){coastalRegion=r;yardPoint=land;waterPoint=sea;break;}}
+    }
+  }}
+  check(coastalRegion>=0,"find actual controlled French coastline");
+  check(navy.placeBuilding(Facility::Shipyard,coastalRegion,yardPoint),"coastal shipyard placement consumes ready inventory");int yard=int(navy.state.sites.size())-1;
+  check(navy.queueUnit(UnitType::Destroyer,yard)&&navy.queueUnit(UnitType::Submarine,yard),"operational shipyard manufactures unlocked naval platforms");
+  navy.state.units[navy.state.units.size()-2].remaining=0;navy.state.units.back().remaining=0;
+  check(navy.readyUnitCount(UnitType::Destroyer)==1&&navy.readyUnitCount(UnitType::Submarine)==1,"completed vessels enter ready inventory");
+  check(!navy.deployUnit(UnitType::Destroyer,yardPoint)&&!navy.deployUnit(UnitType::Destroyer,{-30,0}),"ships reject land and distant ocean deployment");
+  check(navy.deployUnit(UnitType::Destroyer,waterPoint),"ready ship deploys beside friendly coastal shipyard");size_t ship=navy.state.units.size()-2;
+  check(!navy.orderUnitAt(ship,yardPoint),"naval movement rejects land destinations");
+  bool waterRoute=false;for(int a=0;a<32;++a){double angle=a*6.28318530718/32;Point p{waterPoint.x+.03*std::cos(angle),waterPoint.y+.03*std::sin(angle)};if(w.pick(p)<0&&navy.orderUnitAt(ship,p)){waterRoute=true;break;}}
+  check(waterRoute&&std::isfinite(navy.unitArrivalETA(ship)),"ocean route has finite naval arrival estimate");
+  check(navy.orderUnitAt(ship,waterPoint,true)&&navy.state.units[ship].pendingDestinations.size()==1,"naval movement supports queued ocean destinations");
+  size_t mounts=baseWeapons(UnitType::Destroyer).size();navy.state.units[ship].weaponCooldowns.assign(mounts,2);navy.state.units[ship].weaponReloads.assign(mounts,3);navy.state.units[ship].weaponAmmo.assign(mounts,1);navy.state.units[ship].weaponReserve.assign(mounts,7);navy.save(save);
+  Simulation navyRestored(w);navyRestored.load(save);
+  check(navyRestored.state.units[ship].moving&&navyRestored.state.units[ship].pendingDestinations.size()==1&&navyRestored.state.units[ship].weaponAmmo==navy.state.units[ship].weaponAmmo,"naval route queue and weapon state survive v7 save");
+  check(navyRestored.readyUnitCount(UnitType::Submarine)==1,"naval ready inventory survives saves");
+  auto& serviced=navyRestored.state.units[ship];navyRestored.holdUnit(ship);serviced.position=serviced.destination=waterPoint;serviced.health=60;serviced.weaponAmmo.assign(mounts,0);serviced.weaponReserve.assign(mounts,0);serviced.portServiceSeconds=0;
+  for(int n=0;n<int(29/simulationTickSeconds);++n)navyRestored.tick();
+  check(serviced.weaponAmmo.front()==0,"naval rearm requires a complete uninterrupted service cycle");
+  check(navyRestored.returnToPort(ship),"return to port finds reachable friendly coastal water");
+  check(serviced.moving&&serviced.portServiceSeconds==0,"return order resets interrupted port service");
+  navyRestored.holdUnit(ship);serviced.position=serviced.destination=waterPoint;
+  for(int n=0;n<int(30/simulationTickSeconds);++n)navyRestored.tick();
+  check(serviced.weaponAmmo.front()==baseWeapons(UnitType::Destroyer).front().magazine&&serviced.weaponReserve.front()==baseWeapons(UnitType::Destroyer).front().reserveAmmo&&serviced.health==70,"friendly port cycle replenishes naval ammunition and repairs ten health");
+  navyRestored.holdUnit(ship);serviced.position=serviced.destination={-6,49};
+  auto detourStarted=std::chrono::steady_clock::now();
+  check(navyRestored.orderUnitAt(ship,{2,56}),"naval route detours around Great Britain");
+  std::cout<<"Great Britain naval detour: "<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-detourStarted).count()<<" ms\n";
+  check(serviced.waypoints.size()>1,"land obstacle forces multiple ocean waypoints");
+  Point oceanStart=serviced.position;for(Point end:serviced.waypoints){double dx=std::remainder(end.x-oceanStart.x,360.0),dy=end.y-oceanStart.y;int samples=std::max(1,int(std::ceil(std::hypot(dx,dy)/.025)));for(int n=1;n<=samples;++n){double t=double(n)/samples;check(w.pick({std::remainder(oceanStart.x+dx*t,360.0),oceanStart.y+dy*t})<0,"naval detour never crosses neutral island land");}oceanStart=end;}
+  Simulation oldGround(w);oldGround.start(fra);oldGround.save(save);auto v6=readJson(save);v6.get<Object>()["version"]=num(6);v6.get<Object>()["completed"].get<Array>().resize(112);writeSave(save,v6);Simulation v6restored(w);v6restored.load(save);
+  check(v6restored.state.completed.size()==122&&!v6restored.hasTech(112)&&v6restored.state.levels.size()==9,"v6 ground saves extend naval research without granting unlocks");
   Simulation grounded(w);grounded.start(fra);
   check(!grounded.queueUnit(UnitType::Fighter,producer(grounded,Facility::ArmyBase)),"legacy aircraft cannot be manufactured");
   check(grounded.orderUnitAt(0,grounded.state.units[0].position),"ground route checkpoint order");grounded.save(save);

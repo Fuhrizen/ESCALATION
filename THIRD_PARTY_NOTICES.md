@@ -14,3 +14,5 @@
 ICBM: Escalation, State of Command and their associated marks belong to their respective owners. They are inspiration references; no game assets or code from those products are included.
 
 - **DejaVu Sans** regular and bold: Bitstream Vera license; DejaVu changes are public domain. Unmodified font files bundled in `data/fonts/`; full copyright and permission notice in `data/fonts/LICENSE.txt`. Source: https://dejavu-fonts.github.io/ . Original unit/facility vector icons are implemented in `src/ui_icons.hpp`.
+
+The packed `terrain-surface.png` is derived solely from the bundled Natural Earth relative-height and country geometry. Its coastal-distance channel is illustrative shading, not measured bathymetry. City clusters and monument silhouettes are original procedural geometry; geographic references are listed in `data/landmarks.json`.

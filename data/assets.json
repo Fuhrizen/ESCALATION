@@ -31,10 +31,18 @@
       1024
     ],
     "processing": "grayscale8, Lanczos downsample, lossless PNG",
-    "limitations": "Normalized relative elevation used only for visual shaded relief; not metres, a DEM for movement, landcover, or historical terrain."
+    "limitations": "Normalized relative elevation used only for visual shaded relief; not metres, a DEM for movement, landcover, or historical terrain.",
+    "surfaceAtlas": {
+      "file": "data/terrain-surface.png",
+      "channels": "R: unchanged relative elevation; G: ocean distance to bundled country coastlines, capped at 24 pixels; B: country land mask; A: opaque",
+      "coastSource": "Bundled Natural Earth v5.1.2 world.geojson; public domain",
+      "generator": "tools/prepare_surface.py",
+      "limitations": "Coastal distance is illustrative shelf colour, not bathymetry. Biome colours are latitude/elevation-based artistic styling, not land-cover data."
+    }
   },
   "bundledSha256": {
     "data/flags-atlas.png": "323c930d2d5f0f14d506368d3016bde4f8e6b05f4b2133d1af8645043bd2133c",
-    "data/terrain-height.png": "7cc22eb0bc501c3de7384421a397d5a84b58ecb96f3628313139c50d6746a140"
+    "data/terrain-height.png": "7cc22eb0bc501c3de7384421a397d5a84b58ecb96f3628313139c50d6746a140",
+    "data/terrain-surface.png": "02b9f7b73f38f99b9944c69bb07bcf27ae801efc98938efcb816f86ffee78678"
   }
 }

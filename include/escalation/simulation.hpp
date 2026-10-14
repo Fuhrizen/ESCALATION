@@ -7,21 +7,39 @@
 namespace escalation {
   constexpr double simulationTickSeconds=0.25;
   double distanceKm(Point a,Point b);
+  int nearestCoastNation(const World& world,Point position);
   enum class Resource {
     Ore,Oil,Steel,Fuel,Supplies,Equipment,Warheads,Count
   };
   constexpr int resourceCount=int(Resource::Count);
   extern const std::array<const char*,resourceCount> resourceNames;
   enum class Field {
-    Army,Defence,Sensors,SpecialOps,Ballistic,Economy,Research,Logistics,Count
+    Army,Defence,Sensors,SpecialOps,Ballistic,Economy,Research,Logistics,Naval,Count
   };
-  extern const std::array<const char*,8> fieldNames;
+  extern const std::array<const char*,9> fieldNames;
   enum class Facility {
     Mine,OilWell,Steelworks,Refinery,Factory,PowerPlant,Laboratory,Depot,Shipyard,Silo,ArmyBase,Airbase,Radar,Farm,IndustrialPark,Commercial,Count
   };
   extern const std::array<const char*,16> facilityNames;
   enum class UnitType { Infantry, Armour, Artillery, Fighter, Bomber, Destroyer, Submarine, SpecialForces, MissileLauncher, Count };
   extern const std::array<const char*,9> unitNames;
+  enum class TargetDomain : unsigned { Ground=1, Naval=2, Submerged=4, Air=8 };
+  struct WeaponProfile {
+    std::string id,name,behaviour;
+    unsigned targetMask=0;
+    double minRangeKm=0,maxRangeKm=0,damage=0,cooldownSeconds=1;
+    int magazine=1,reserveAmmo=0;
+    double reloadSeconds=1,projectileSpeedKmPerSecond=0,impactRadiusKm=2;
+    bool armourOnly=false;
+  };
+  struct Engagement {
+    Point origin,target;
+    int attacker=-1,defender=-1;
+    std::string weaponId;
+    unsigned targetMask=0;
+    double damage=0,remaining=0,total=0,impactRadiusKm=2;
+    bool guided=false;
+  };
   struct Unit {
     int owner=-1,region=0,target=-1,sourceSite=-1;
     UnitType type=UnitType::Infantry;
@@ -30,6 +48,9 @@ namespace escalation {
     std::vector<int> path;
     std::vector<Point> waypoints;
     std::vector<Point> pendingDestinations;
+    std::vector<double> weaponCooldowns,weaponReloads;
+    std::vector<int> weaponAmmo,weaponReserve;
+    double portServiceSeconds=0;
     bool moving=false;
     bool deployed=true;
   };
@@ -38,6 +59,12 @@ namespace escalation {
   bool canEngage(UnitType attacker,UnitType defender);
   struct Capability { std::string name,value,icon; bool active=true; };
   bool groundUnit(UnitType type);
+  bool navalUnit(UnitType type);
+  bool activeUnit(UnitType type);
+  TargetDomain targetDomain(UnitType type);
+  std::vector<WeaponProfile> baseWeapons(UnitType type);
+  int weaponSlot(UnitType type,const std::string& id);
+  bool weaponTargets(const WeaponProfile& weapon,UnitType target);
   struct Tech {
     std::string id,name,effect;
     Field field;
@@ -88,11 +115,12 @@ namespace escalation {
     bool simpleEconomy=true;
     Field specialization=Field::Economy;
     std::array<double,resourceCount> stock{},delta{};
-    std::array<int,8> levels{};
+    std::array<int,9> levels{};
     std::vector<Region> regions;
     std::vector<Settlement> settlements;
     std::vector<Site> sites;
     std::vector<Unit> units;
+    std::vector<Engagement> engagements;
     std::vector<Route> routes;
     std::vector<bool> completed;
     std::deque<ResearchJob> research;
@@ -136,6 +164,9 @@ namespace escalation {
     double unitBuildETA(UnitType type,int site) const;
     double unitSpeedKmPerSecond(const Unit& unit) const;
     double unitRangeKm(const Unit& unit) const;
+    std::vector<WeaponProfile> unitWeapons(const Unit& unit) const;
+    double engagementRange(const Unit& attacker,const Unit& defender) const;
+    bool canEngage(const Unit& attacker,const Unit& defender) const;
     int mainSettlement(int region) const;
     double frontlinePressure(Point position) const;
     double roadMovementBonus(Point position) const;
@@ -174,6 +205,7 @@ namespace escalation {
     bool orderUnit(size_t index,int destination,bool append=false);
     bool orderUnitAt(size_t index,Point destination,bool append=false);
     void holdUnit(size_t index);
+    bool returnToPort(size_t index);
     bool cancelUnit(size_t index);
     bool connect(int a,int b);
     bool upgradeRoute(size_t route);

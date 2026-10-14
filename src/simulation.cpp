@@ -8,7 +8,7 @@
 #include <limits>
 namespace escalation {
   const std::array<const char*,resourceCount> resourceNames={"Ore","Crude oil","Steel","Fuel","Supplies","Equipment","Warheads"};
-  const std::array<const char*,8> fieldNames={"Land warfare","Defence","Sensors","Special operations","Missiles","Industry","Science","Support"};
+  const std::array<const char*,9> fieldNames={"Land warfare","Defence","Sensors","Special operations","Missiles","Industry","Science","Support","Navy"};
   const std::array<const char*,16> facilityNames={"Mine","Oil field","Steelworks","Refinery","Arms plant","Power station","Research centre","Command centre","Shipyard","Missile site","Army base","Airbase","Radar station","Farm","Industrial district","Commercial district"};
   std::vector<Tech> makeTechTree(){
     static const char* labels[8][14]={
@@ -36,10 +36,22 @@ namespace escalation {
     for(int i=14;i<28;++i)effect(i,"Ground incoming damage -2%");
     for(int i=28;i<42;++i)effect(i,"Ground weapon range +2%");
     effect(46,"Unlock special forces");effect(48,"Special forces damage +15%");effect(49,"Special forces movement +15%");
-    effect(17,"MANPADS equipment reserved; air targets are not implemented");effect(18,"Infantry anti-tank damage +30%");effect(59,"Unlock nuclear warhead production; requires Computing centres");effect(60,"Unlock nuclear delivery from an operational missile site");effect(62,"Unlock mobile missile batteries and missile sites");effect(63,"Missile damage +15%");effect(65,"Missile range +20%");
+    effect(17,"MANPADS equipment reserved; air targets are not implemented");effect(18,"Unlock independent anti-tank guided missile mount: 0.5–7 km, armour targets only");effect(59,"Unlock nuclear warhead production; requires Computing centres");effect(60,"Unlock nuclear delivery from an operational missile site");effect(62,"Unlock mobile missile batteries and missile sites");effect(63,"Missile damage +15%");effect(65,"Missile range +20%");
     for(int i=70;i<84;++i)effect(i,"Regional production +6%");
     for(int i=84;i<98;++i)effect(i,"Research output +8%");
     for(int i=98;i<112;++i)effect(i,"Ground movement +3%");
+    // Appended IDs preserve every existing ground technology and save reference.
+    auto naval=[&](const char* key,const char* name,const char* effect,int tier,int year,std::vector<int> parents){result.push_back({key,name,effect,Field::Naval,tier,year,500+double(tier)*250,std::move(parents)});};
+    naval("naval-foundations","Naval foundations","Unlock coastal shipyard manufacture",0,1920,{});
+    naval("surface-warfare","Surface warfare","Unlock destroyer manufacture",1,1930,{112});
+    naval("submarine-warfare","Submarine warfare","Unlock submarine manufacture",1,1930,{112});
+    naval("naval-gunnery","Naval gunnery","Destroyer naval cannon damage +20%",2,1940,{113});
+    naval("antisubmarine-warfare","Anti-submarine warfare","Unlock destroyer anti-submarine weapons",2,1940,{113});
+    naval("antiship-missiles","Guided anti-ship missiles","Unlock guided anti-ship weapons",3,1960,{115});
+    naval("submarine-torpedoes","Submarine torpedoes","Submarine torpedo damage +20%",2,1940,{114});
+    naval("naval-cruise-missiles","Naval cruise missiles","Unlock naval land-attack cruise missiles",4,1980,{117,118});
+    naval("naval-sensors","Integrated naval sensors","Naval weapon range +10%",3,1970,{116,118});
+    naval("naval-propulsion","Naval propulsion","Naval movement +15%",2,1950,{113,114});
     // Reference years are descriptive, never availability gates. Keep existing
     // references where possible, correcting cross-branch chronology only.
     bool changed=true;while(changed){changed=false;for(auto& tech:result)for(int p:tech.prerequisites)if(tech.year<result[p].year){tech.year=result[p].year;changed=true;}}
@@ -51,7 +63,7 @@ namespace escalation {
   }
   void Simulation::start(int nation,Field focus,bool simpleEconomy){
     if(nation<0||nation>=int(world_->countries.size())||world_->countries[nation].code=="ATA")throw std::runtime_error("Select a playable nation");
-    if(int(focus)<0||int(focus)>=8)throw std::runtime_error("Invalid research specialization");
+    if(int(focus)<0||int(focus)>=9)throw std::runtime_error("Invalid research specialization");
     nation=world_->canonical(nation);
     state=Campaign{};
     (void)simpleEconomy;
@@ -122,6 +134,20 @@ namespace escalation {
       Point enemyCentre=world_->countries[country==state.player?state.enemy:state.player].center;
       std::sort(sectors.begin(),sectors.end(),[&](int x,int y){return distance(state.regions[x].center,enemyCentre)<distance(state.regions[y].center,enemyCentre);});
       for(int n=0;n<4;++n){Unit unit;unit.owner=country;unit.region=sectors[n];unit.position=state.regions[unit.region].center;unit.destination=unit.position;state.units.push_back(unit);}
+    }
+    // One basic patrol ship only for a genuine enemy ocean coast. Landlocked
+    // nations retain their land-only starting forces and receive no shipyard.
+    bool seaPatrol=false;size_t coastalAttempts=0;
+    for(const auto& polygon:world_->countries[state.enemy].polygons){if(seaPatrol||coastalAttempts>=256)break;if(polygon.rings.empty())continue;
+      const auto& ring=polygon.rings.front();size_t stride=std::max<size_t>(1,ring.size()/128);
+      for(size_t k=0;k<ring.size()&&!seaPatrol&&coastalAttempts<256;k+=stride){++coastalAttempts;Point v=ring[k];
+        for(int a=0;a<8&&!seaPatrol;++a){double theta=a*.7853981634;Point water{v.x+.045*std::cos(theta),v.y+.045*std::sin(theta)};if(world_->pick(water)>=0)continue;
+          if(world_->canonical(nearestCoastNation(*world_,water))!=state.enemy)continue;
+          for(int b=0;b<8;++b){double angle=b*.7853981634;Point land{v.x+.008*std::cos(angle),v.y+.008*std::sin(angle)};if(!world_->countries[state.enemy].contains(land))continue;int r=regionAt(land);if(r<0||state.regions[r].owner!=state.enemy||distanceKm(land,water)>30)continue;
+            state.sites.push_back({r,Facility::Shipyard,0,1,true,land,false});Unit patrol;patrol.owner=state.enemy;patrol.region=r;patrol.type=UnitType::Destroyer;patrol.position=patrol.destination=water;state.units.push_back(patrol);seaPatrol=true;break;
+          }
+        }
+      }
     }
     for(const auto& city:world_->cities){
       // Imported national affiliation survives gameplay grouping and coastlines
@@ -236,7 +262,7 @@ namespace escalation {
     if(index<state.research.size()){state.research.erase(state.research.begin()+std::ptrdiff_t(index));economy(false);}
   }
   static bool activeFacility(Facility f){
-    return f==Facility::Factory||f==Facility::Laboratory||f==Facility::Depot||f==Facility::Silo||f==Facility::ArmyBase||f==Facility::Radar||f==Facility::IndustrialPark;
+    return f==Facility::Shipyard||f==Facility::Factory||f==Facility::Laboratory||f==Facility::Depot||f==Facility::Silo||f==Facility::ArmyBase||f==Facility::Radar||f==Facility::IndustrialPark;
   }
   double Simulation::buildCost(Facility type) const {
     static double cost[]={0,0,0,0,100,0,120,40,160,180,80,120,90,0,140,0};
@@ -247,6 +273,7 @@ namespace escalation {
     if(region<0||region>=int(state.regions.size())||state.regions[region].owner!=state.player)return "Build on controlled land";
     if(!activeFacility(type))return "Retired economic facility";
     if(state.sites.size()>=1000)return "Campaign construction history capacity reached";
+    if(type==Facility::Shipyard&&!hasTech(112))return "Requires Naval foundations";
     if(type==Facility::Radar&&!hasTech(29))return "Requires Ground surveillance";
     if(type==Facility::Silo&&!hasTech(62)&&!hasTech(59))return "Requires Mobile launchers or Nuclear deterrence";
     int count=0;
@@ -260,6 +287,7 @@ namespace escalation {
     if(state.buildingQueue.size()>=64)return "Construction queue is full";
     int reserved=state.buildingInventory[int(type)];for(const auto& job:state.buildingQueue)if(job.type==type)++reserved;
     if(reserved>=1000)return "Ready inventory is full";
+    if(type==Facility::Shipyard&&!hasTech(112))return "Requires Naval foundations";
     if(type==Facility::Radar&&!hasTech(29))return "Requires Ground surveillance";
     if(type==Facility::Silo&&!hasTech(62)&&!hasTech(59))return "Requires Mobile launchers or Nuclear deterrence";
     return "";
@@ -409,7 +437,7 @@ namespace escalation {
     auto n=[&](const char* k,double v){
       o[k]=num(v);
     };
-    n("version",6);
+    n("version",7);
     n("simple",state.simpleEconomy);
     o["player"]=str(world_->countries[state.player].code);
     o["enemy"]=str(world_->countries[state.enemy].code);
@@ -459,7 +487,8 @@ namespace escalation {
     for(const auto& job:state.buildingQueue){Object v;v["type"]=num(int(job.type));v["progress"]=num(job.progress);v["total"]=num(job.total);buildings.push_back(Json(v));}
     o["buildingQueue"]=Json(buildings);
     Array ready;for(int count:state.buildingInventory)ready.push_back(num(count));o["buildingInventory"]=Json(ready);
-    Array units;for(auto& u:state.units){Object v;v["owner"]=str(world_->countries[u.owner].code);v["region"]=num(u.region);v["target"]=num(u.target);v["source"]=num(u.sourceSite);v["type"]=num(int(u.type));v["x"]=num(u.position.x);v["y"]=num(u.position.y);v["dx"]=num(u.destination.x);v["dy"]=num(u.destination.y);v["health"]=num(u.health);v["remaining"]=num(u.remaining);v["total"]=num(u.total);v["moving"]=num(u.moving);v["deployed"]=num(u.deployed);Array path;for(int r:u.path)path.push_back(num(r));v["path"]=Json(path);Array waypoints;for(Point p:u.waypoints){Array xy{num(p.x),num(p.y)};waypoints.push_back(Json(xy));}v["waypoints"]=Json(waypoints);Array pending;for(Point p:u.pendingDestinations){Array xy{num(p.x),num(p.y)};pending.push_back(Json(xy));}v["pendingDestinations"]=Json(pending);units.push_back(Json(v));}o["units"]=Json(units);
+    Array units;for(auto& u:state.units){Object v;v["owner"]=str(world_->countries[u.owner].code);v["region"]=num(u.region);v["target"]=num(u.target);v["source"]=num(u.sourceSite);v["type"]=num(int(u.type));v["x"]=num(u.position.x);v["y"]=num(u.position.y);v["dx"]=num(u.destination.x);v["dy"]=num(u.destination.y);v["health"]=num(u.health);v["remaining"]=num(u.remaining);v["total"]=num(u.total);v["moving"]=num(u.moving);v["deployed"]=num(u.deployed);v["portServiceSeconds"]=num(u.portServiceSeconds);Array path;for(int r:u.path)path.push_back(num(r));v["path"]=Json(path);Array waypoints;for(Point p:u.waypoints){Array xy{num(p.x),num(p.y)};waypoints.push_back(Json(xy));}v["waypoints"]=Json(waypoints);Array pending;for(Point p:u.pendingDestinations){Array xy{num(p.x),num(p.y)};pending.push_back(Json(xy));}v["pendingDestinations"]=Json(pending);auto doubles=[&](const char* key,const std::vector<double>& values){Array a;for(double x:values)a.push_back(num(x));v[key]=Json(a);};auto ints=[&](const char* key,const std::vector<int>& values){Array a;for(int x:values)a.push_back(num(x));v[key]=Json(a);};doubles("weaponCooldowns",u.weaponCooldowns);doubles("weaponReloads",u.weaponReloads);ints("weaponAmmo",u.weaponAmmo);ints("weaponReserve",u.weaponReserve);units.push_back(Json(v));}o["units"]=Json(units);
+    Array engagements;for(const auto& e:state.engagements){Object v;v["ox"]=num(e.origin.x);v["oy"]=num(e.origin.y);v["tx"]=num(e.target.x);v["ty"]=num(e.target.y);v["attacker"]=num(e.attacker);v["defender"]=num(e.defender);v["weapon"]=str(e.weaponId);v["mask"]=num(e.targetMask);v["guided"]=num(e.guided);v["damage"]=num(e.damage);v["remaining"]=num(e.remaining);v["total"]=num(e.total);v["radius"]=num(e.impactRadiusKm);engagements.push_back(Json(v));}o["engagements"]=Json(engagements);
     Array routes;
     for(auto& r:state.routes){
       Object v;
@@ -518,10 +547,10 @@ namespace escalation {
       if(std::floor(v)!=v)throw std::runtime_error("Non-integral save index");
       return int(v);
     };
-    int version=integer(o,"version",1,6);
+    int version=integer(o,"version",1,7);
     int player=world_->find(string(o,"player")),enemy=world_->find(string(o,"enemy"));
     Simulation candidate(*world_);
-    candidate.start(player,Field(integer(o,"focus",0,7)),version>=2?bool(integer(o,"simple",0,1)):false);
+    candidate.start(player,Field(integer(o,"focus",0,version>=7?8:7)),version>=2?bool(integer(o,"simple",0,1)):false);
     auto& c=candidate.state;
     if(enemy!=c.enemy)throw std::runtime_error("Save opponent differs from world data");
     c.day=integer(o,"day",0,365*300);
@@ -548,7 +577,7 @@ namespace escalation {
     }
     if(std::floor(c.stock[6])!=c.stock[6]||c.stock[6]+c.warheadsQueued>20)throw std::runtime_error("Invalid strategic stockpile");
     auto& done=asArray(field(o,"completed"));
-    if(done.size()!=techs.size())throw std::runtime_error("Invalid technology tree");
+    if(done.size()!=techs.size()&&!(version<7&&done.size()==112))throw std::runtime_error("Invalid technology tree");
     c.levels.fill(0);
     for(size_t i=0;i<done.size();++i){
       double flag=asNumber(done[i]);
@@ -556,7 +585,7 @@ namespace escalation {
       c.completed[i]=flag==1;
       if(version<6&&i>=14&&i<42)c.completed[i]=false;
       if(c.completed[i]){
-        if(version>=6)for(int p:techs[i].prerequisites)if(!asNumber(done[p]))throw std::runtime_error("Broken research prerequisite");
+        if(version>=6)for(int p:techs[i].prerequisites)if(p>=int(done.size())||!asNumber(done[p]))throw std::runtime_error("Broken research prerequisite");
         c.levels[int(techs[i].field)]=std::max(c.levels[int(techs[i].field)],techs[i].tier+1);
       }
     }
@@ -649,9 +678,18 @@ namespace escalation {
           }
           if(!u.pendingDestinations.empty()&&(!u.moving||u.health<=0||u.remaining>0||!u.deployed))throw std::runtime_error("Invalid queued unit readiness");
         }
+        if(version>=7){
+          u.portServiceSeconds=bounded(v,"portServiceSeconds",0,30);
+          auto doubles=[&](const char* key,std::vector<double>& values){const auto& a=asArray(field(v,key));if(a.size()>64)throw std::runtime_error("Too many weapon states");for(const auto& x:a){double n=asNumber(x);if(!std::isfinite(n)||n<0||n>120000)throw std::runtime_error("Invalid weapon timer");values.push_back(n);}};
+          auto ints=[&](const char* key,std::vector<int>& values){const auto& a=asArray(field(v,key));if(a.size()>64)throw std::runtime_error("Too many weapon states");for(const auto& x:a){double n=asNumber(x);if(!std::isfinite(n)||n<0||n>100000||std::floor(n)!=n)throw std::runtime_error("Invalid weapon ammunition");values.push_back(int(n));}};
+          doubles("weaponCooldowns",u.weaponCooldowns);doubles("weaponReloads",u.weaponReloads);ints("weaponAmmo",u.weaponAmmo);ints("weaponReserve",u.weaponReserve);
+          if(u.weaponCooldowns.size()!=u.weaponAmmo.size()||u.weaponAmmo.size()!=u.weaponReloads.size()||u.weaponAmmo.size()!=u.weaponReserve.size())throw std::runtime_error("Inconsistent weapon state");
+        }
         c.units.push_back(std::move(u));
       }
     }
+    c.engagements.clear();
+    if(version>=7){const auto& shots=asArray(field(o,"engagements"));if(shots.size()>10000)throw std::runtime_error("Too many engagements");for(const auto& v:shots){Engagement e;e.origin={bounded(v,"ox",-720,720),bounded(v,"oy",-90,90)};e.target={bounded(v,"tx",-720,720),bounded(v,"ty",-90,90)};e.attacker=integer(v,"attacker",0,int(c.units.size())-1);e.defender=integer(v,"defender",0,int(c.units.size())-1);e.weaponId=string(v,"weapon");e.targetMask=unsigned(integer(v,"mask",1,15));e.guided=bool(integer(v,"guided",0,1));e.damage=bounded(v,"damage",0,10000);e.total=bounded(v,"total",0,120000);e.remaining=bounded(v,"remaining",0,e.total);e.impactRadiusKm=bounded(v,"radius",0,1000);if(e.weaponId.empty()||e.weaponId.size()>100)throw std::runtime_error("Invalid engagement weapon");c.engagements.push_back(std::move(e));}}
     c.routes.clear();
     auto& routes=asArray(field(o,"routes"));
     if(routes.size()>2500)throw std::runtime_error("Too many routes");
@@ -699,10 +737,11 @@ namespace escalation {
     // Legacy movement did not store a safe geometric route. Replan through the
     // current land/sea rules rather than resuming an obsolete straight line.
     if(version<3)for(auto& unit:c.units)if(unit.moving&&!candidate.planUnitMovement(unit,unit.destination)){unit.moving=false;unit.path.clear();unit.waypoints.clear();unit.pendingDestinations.clear();}
-    for(auto& site:c.sites)if(site.type==Facility::Airbase||site.type==Facility::Shipyard){site.destroyed=true;site.enabled=false;site.remaining=0;}
-    c.buildingInventory[int(Facility::Airbase)]=0;c.buildingInventory[int(Facility::Shipyard)]=0;
-    c.buildingQueue.erase(std::remove_if(c.buildingQueue.begin(),c.buildingQueue.end(),[](const BuildingJob& j){return j.type==Facility::Airbase||j.type==Facility::Shipyard;}),c.buildingQueue.end());
-    for(auto& u:c.units)if(!groundUnit(u.type)){u.health=0;u.remaining=0;u.deployed=false;u.moving=false;u.path.clear();u.waypoints.clear();u.pendingDestinations.clear();}
+    for(auto& site:c.sites)if(site.type==Facility::Airbase||(version<6&&site.type==Facility::Shipyard)){site.destroyed=true;site.enabled=false;site.remaining=0;}
+    c.buildingInventory[int(Facility::Airbase)]=0;if(version<6)c.buildingInventory[int(Facility::Shipyard)]=0;
+    c.buildingQueue.erase(std::remove_if(c.buildingQueue.begin(),c.buildingQueue.end(),[&](const BuildingJob& j){return j.type==Facility::Airbase||(version<6&&j.type==Facility::Shipyard);}),c.buildingQueue.end());
+    for(auto& u:c.units)if(!activeUnit(u.type)||(version<6&&navalUnit(u.type))){u.health=0;u.remaining=0;u.deployed=false;u.moving=false;u.path.clear();u.waypoints.clear();u.pendingDestinations.clear();}
+    for(auto& u:c.units)if(navalUnit(u.type)&&u.health>0&&u.deployed){if(world_->pick(u.position)>=0)throw std::runtime_error("Deployed naval unit must be on ocean");if(u.moving){Unit planned=u;if(!candidate.planUnitMovement(planned,u.destination))throw std::runtime_error("Invalid naval route");u.waypoints=std::move(planned.waypoints);u.path.clear();}}
     if(version<6){candidate.log("Version 6 migration: ground research ancestry migrated; air and naval assets and research retired");for(auto& u:c.units)if(u.moving&&!candidate.planUnitMovement(u,u.destination)){u.moving=false;u.path.clear();u.waypoints.clear();u.pendingDestinations.clear();}}
     candidate.economy(false);
     c.lastAutosave=c.day;

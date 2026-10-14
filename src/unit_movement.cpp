@@ -16,6 +16,20 @@ namespace escalation {
       u.target=-1;
     }
   }
+  bool Simulation::returnToPort(size_t i){
+    if(i>=state.units.size())return false;
+    const auto& ship=state.units[i];
+    if(ship.owner!=state.player||!navalUnit(ship.type)||ship.health<=0||ship.remaining>0||!ship.deployed)return false;
+    std::vector<size_t> yards;
+    for(size_t n=0;n<state.sites.size();++n){const auto& yard=state.sites[n];if(yard.type==Facility::Shipyard&&!yard.destroyed&&yard.enabled&&yard.remaining<=0&&yard.region>=0&&yard.region<int(state.regions.size())&&state.regions[yard.region].owner==ship.owner)yards.push_back(n);}
+    std::sort(yards.begin(),yards.end(),[&](size_t a,size_t b){return distanceKm(ship.position,state.sites[a].position)<distanceKm(ship.position,state.sites[b].position);});
+    for(size_t index:yards){const auto& yard=state.sites[index];for(double radius:{5.0,10.0,20.0})for(int n=0;n<24;++n){double a=n*6.28318530718/24;Point p{yard.position.x+radius/111.2*std::cos(a)/std::max(.2,std::cos(yard.position.y*.01745329252)),yard.position.y+radius/111.2*std::sin(a)};
+      if(!deploymentReason(ship.type,p).empty())continue;
+      Unit planned=ship;if(!planUnitMovement(planned,p))continue;
+      planned.pendingDestinations.clear();planned.portServiceSeconds=0;state.units[i]=std::move(planned);log("Return to port ordered");return true;
+    }}
+    return false;
+  }
   bool Simulation::orderUnit(size_t i,int r,bool append){
     if(r<0||r>=int(state.regions.size()))return false;
     return orderUnitAt(i,state.regions[r].center,append);
@@ -46,8 +60,20 @@ namespace escalation {
     int rival=u.owner==state.player?state.enemy:state.player;
     auto accessible=[&](int region){return region>=0&&region<int(state.regions.size())&&
       (state.regions[region].owner==u.owner||(state.war&&state.regions[region].owner==rival));};
-    if(!ground(u.type)||!u.deployed||!accessible(destination))return false;
+    const bool sea=navalUnit(u.type);
+    if(!activeUnit(u.type)||!u.deployed||(!sea&&!accessible(destination))||(sea&&world_->pick(p)>=0))return false;
+    // Bounds are prepared once per sea order. Country::contains otherwise
+    // rescans every coastline just to reconstruct longitude bounds per sample.
+    struct CoastBounds{const Polygon* polygon;double west,east,south,north;};
+    std::vector<CoastBounds> coasts;
+    if(sea)for(const auto& country:world_->countries)for(const auto& polygon:country.polygons){
+      if(polygon.rings.empty()||polygon.rings.front().empty())continue;
+      CoastBounds box{&polygon,1e30,-1e30,1e30,-1e30};
+      for(Point v:polygon.rings.front()){box.west=std::min(box.west,v.x);box.east=std::max(box.east,v.x);box.south=std::min(box.south,v.y);box.north=std::max(box.north,v.y);}coasts.push_back(box);
+    }
+    auto inRing=[](const Ring& ring,Point q){bool inside=false;for(size_t i=0,j=ring.size()-1;i<ring.size();j=i++){Point a=ring[i],b=ring[j];if((a.y>q.y)!=(b.y>q.y)&&q.x<(b.x-a.x)*(q.y-a.y)/(b.y-a.y)+a.x)inside=!inside;}return inside;};
     auto traversable=[&](Point q){
+      if(sea){for(const auto& box:coasts){if(q.y<box.south||q.y>box.north)continue;Point shifted=q;double reference=(box.west+box.east)/2;shifted.x=reference+std::remainder(q.x-reference,360.0);if(shifted.x<box.west||shifted.x>box.east||!inRing(box.polygon->rings.front(),shifted))continue;bool hole=false;for(size_t r=1;r<box.polygon->rings.size();++r)if(inRing(box.polygon->rings[r],shifted)){hole=true;break;}if(!hole)return false;}return true;}
       int nation=-1;
       for(int candidate:{state.player,state.enemy})if(world_->countries[candidate].contains(q)){nation=candidate;break;}
       if(nation<0)return false;
@@ -58,9 +84,10 @@ namespace escalation {
       }
       return accessible(nearest);
     };
+    if(!traversable(u.position))return false;
     auto clearSegment=[&](Point a,Point b){
       double dx=std::remainder(b.x-a.x,360.0),dy=b.y-a.y;
-      int samples=std::max(1,int(std::ceil(std::hypot(dx,dy)/0.08)));
+      int samples=std::max(1,int(std::ceil(std::hypot(dx,dy)/(sea?0.025:0.08))));
       for(int n=1;n<=samples;++n){double t=double(n)/samples;
         if(!traversable({std::remainder(a.x+dx*t,360.0),a.y+dy*t}))return false;
       }
@@ -73,14 +100,18 @@ namespace escalation {
       // sampled against actual land, so region adjacency cannot cut across a bay.
       std::vector<Point> nodes={u.position,p};
       if(ground(u.type))for(size_t r=0;r<state.regions.size();++r)if(accessible(int(r)))nodes.push_back(state.regions[r].center);
-      for(int nation:{state.player,state.enemy})for(const auto& polygon:world_->countries[nation].polygons){
+      std::vector<int> coastalNations;
+      if(sea){for(size_t n=0;n<world_->countries.size();++n)coastalNations.push_back(int(n));}
+      else coastalNations={state.player,state.enemy};
+      const size_t nodeLimit=sea?360:120;
+      for(int nation:coastalNations)for(const auto& polygon:world_->countries[nation].polygons){
         if(polygon.rings.empty())continue;
         const auto& ring=polygon.rings.front();
-        for(size_t k=0;k<ring.size()&&nodes.size()<120;++k){
+        for(size_t k=0;k<ring.size()&&nodes.size()<nodeLimit;++k){
           Point v=ring[k];
           if(distance(v,u.position)+distance(v,p)>distance(u.position,p)+6)continue;
           // Sample both sides of the coast; only traversable candidates survive.
-          for(int angle=0;angle<8&&nodes.size()<120;++angle){
+          for(int angle=0;angle<8&&nodes.size()<nodeLimit;++angle){
             Point q{v.x+0.12*std::cos(angle*0.7853981634),v.y+0.12*std::sin(angle*0.7853981634)};
             if(traversable(q)){nodes.push_back(q);break;}
           }
@@ -159,11 +190,22 @@ namespace escalation {
       if(u.remaining>0||!u.deployed)continue; // Production is allocated by economy(), per producer.
       if(u.owner==state.player&&ground(u.type)&&hasTech(12)&&u.health<100){
         bool engaged=false;
-        if(state.war)for(const auto& enemy:state.units)if(enemy.owner!=u.owner&&enemy.deployed&&enemy.health>0&&enemy.remaining<=0&&ground(enemy.type)){
-          double range=std::max(unitRangeKm(u),unitRangeKm(enemy));
-          if(distanceKm(u.position,enemy.position)<=range){engaged=true;break;}
+        if(state.war)for(const auto& enemy:state.units)if(enemy.owner!=u.owner&&enemy.deployed&&enemy.health>0&&enemy.remaining<=0&&activeUnit(enemy.type)){
+          if(canEngage(u,enemy)||canEngage(enemy,u)){engaged=true;break;}
         }
+        for(const auto& shot:state.engagements)if(shot.defender==int(&u-state.units.data()))engaged=true;
         if(!engaged)u.health=std::min(100.0,u.health+.10*simulationTickSeconds);
+      }
+      if(navalUnit(u.type)){
+        bool port=false,engaged=false;
+        for(const auto& yard:state.sites)if(yard.type==Facility::Shipyard&&!yard.destroyed&&yard.enabled&&yard.remaining<=0&&yard.region>=0&&yard.region<int(state.regions.size())&&state.regions[yard.region].owner==u.owner&&distanceKm(u.position,yard.position)<=30){port=true;break;}
+        if(state.war)for(const auto& enemy:state.units)if(enemy.owner!=u.owner&&enemy.deployed&&enemy.health>0&&enemy.remaining<=0&&activeUnit(enemy.type)&&distanceKm(u.position,enemy.position)<=std::max(engagementRange(u,enemy),engagementRange(enemy,u))){engaged=true;break;}
+        for(const auto& shot:state.engagements)if(shot.defender==int(&u-state.units.data())||shot.attacker==int(&u-state.units.data()))engaged=true;
+        if(u.moving||!port||engaged)u.portServiceSeconds=0;
+        else{
+          u.portServiceSeconds+=simulationTickSeconds;
+          if(u.portServiceSeconds+1e-9>=30){const auto weapons=baseWeapons(u.type);u.weaponCooldowns.assign(weapons.size(),0);u.weaponReloads.assign(weapons.size(),0);u.weaponAmmo.clear();u.weaponReserve.clear();for(const auto& weapon:weapons){u.weaponAmmo.push_back(weapon.magazine);u.weaponReserve.push_back(weapon.reserveAmmo);}u.health=std::min(100.0,u.health+10);u.portServiceSeconds=0;}
+        }
       }
       if(!u.moving)continue;
       if(u.waypoints.empty()){

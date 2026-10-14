@@ -44,19 +44,20 @@ double Simulation::frontlinePressure(Point p) const {
 }
 
 void Simulation::combat(){
-  if(!state.war)return;
+  if(!state.war){state.engagements.clear();return;}
   // Defenders react to actual incursions; orders never create damage remotely.
   for(auto& defender:state.units)if(defender.owner==state.enemy&&ready(defender)&&occupying(defender.type)){
     Point destination=defender.position;
     double best=std::numeric_limits<double>::max();
     bool response=false,settlementObjective=false;
+    const Unit* responseTarget=nullptr;
     int objectiveRegion=-1;
     for(const auto& attacker:state.units)if(attacker.owner==state.player&&ready(attacker)&&occupying(attacker.type)){
       int r=attacker.region;
       bool threat=r>=0&&r<int(state.regions.size())&&state.regions[r].nation==state.enemy;
       if(!threat)for(const auto& city:state.settlements)if(city.owner==state.enemy&&distanceKm(city.position,attacker.position)<30){threat=true;break;}
       double d=distanceKm(defender.position,attacker.position);
-      if(threat&&d<best){best=d;destination=attacker.position;response=true;}
+      if(threat&&d<best){best=d;destination=attacker.position;response=true;responseTarget=&attacker;}
     }
     if(!response)for(const auto& city:state.settlements)if(city.region>=0&&city.region<int(state.regions.size())&&state.regions[city.region].nation==state.enemy&&city.owner!=state.enemy){
       double d=distanceKm(defender.position,city.position);
@@ -64,7 +65,7 @@ void Simulation::combat(){
     }
     // Weapon standoff is useful against troops, but occupation requires a
     // formation inside the city's five-kilometre perimeter.
-    double stoppingDistance=settlementObjective?4.5:unitRangeKm(defender)*.85;
+    double stoppingDistance=settlementObjective?4.5:(responseTarget?engagementRange(defender,*responseTarget):unitRangeKm(defender))*.85;
     if(response&&(best>stoppingDistance||(settlementObjective&&regionAt(defender.position)!=objectiveRegion))){
       int target=regionAt(destination);
       bool changed=defender.target!=target||distanceKm(defender.destination,destination)>5;
@@ -78,14 +79,62 @@ void Simulation::combat(){
       }
     }else{defender.moving=false;defender.path.clear();defender.waypoints.clear();}
   }
+  // Naval defenders protect home coast water only; they never pursue cities.
+  for(auto& defender:state.units)if(defender.owner==state.enemy&&ready(defender)&&navalUnit(defender.type)){
+    const Unit* threat=nullptr;double best=std::numeric_limits<double>::max();
+    for(const auto& attacker:state.units)if(attacker.owner==state.player&&ready(attacker)&&navalUnit(attacker.type)&&engagementRange(defender,attacker)>0){
+      bool homeWater=false;for(const auto& region:state.regions)if(region.nation==state.enemy&&distanceKm(region.center,attacker.position)<180){homeWater=true;break;}
+      double d=distanceKm(defender.position,attacker.position);if(homeWater&&d<best){threat=&attacker;best=d;}
+    }
+    if(threat&&best>engagementRange(defender,*threat)*.85){if(distanceKm(defender.destination,threat->position)>5||!defender.moving)planUnitMovement(defender,threat->position);}
+    else {defender.moving=false;defender.path.clear();defender.waypoints.clear();}
+  }
   std::vector<double> damage(state.units.size(),0);
+  for(auto& shot:state.engagements){
+    if(shot.guided&&shot.defender>=0&&shot.defender<int(state.units.size())&&ready(state.units[shot.defender]))shot.target=state.units[shot.defender].position;
+    shot.remaining-=simulationTickSeconds;
+    if(shot.remaining<=0&&shot.defender>=0&&shot.defender<int(state.units.size())){
+      const auto& target=state.units[shot.defender];
+      if(ready(target)&&(shot.targetMask&unsigned(targetDomain(target.type)))&&distanceKm(target.position,shot.target)<=shot.impactRadiusKm+unitSpeedKmPerSecond(target)*simulationTickSeconds)damage[shot.defender]+=shot.damage*(1-unitProtection(target));
+    }
+  }
+  state.engagements.erase(std::remove_if(state.engagements.begin(),state.engagements.end(),[](const Engagement& shot){return shot.remaining<=0;}),state.engagements.end());
+  // Each mount chooses one eligible target and consumes its own ammunition.
+  // Every launch is selected before damage is applied, preserving mutual fire.
   for(size_t a=0;a<state.units.size();++a){
-    const auto& ua=state.units[a];if(!ready(ua))continue;
-    for(size_t b=a+1;b<state.units.size();++b){
-      const auto& ub=state.units[b];if(!ready(ub)||ua.owner==ub.owner)continue;
-      double d=distanceKm(ua.position,ub.position);
-      if(canEngage(ua.type,ub.type)&&d<=unitRangeKm(ua))damage[b]+=unitDamagePerSecond(ua,ub.type)*simulationTickSeconds*(.35+.65*ua.health/100)*(1-unitProtection(ub));
-      if(canEngage(ub.type,ua.type)&&d<=unitRangeKm(ub))damage[a]+=unitDamagePerSecond(ub,ua.type)*simulationTickSeconds*(.35+.65*ub.health/100)*(1-unitProtection(ua));
+    auto& ua=state.units[a];if(!ready(ua))continue;
+    const auto weapons=unitWeapons(ua);auto slots=baseWeapons(ua.type);
+    for(const auto& weapon:weapons)if(weaponSlot(ua.type,weapon.id)>=int(slots.size()))slots.push_back(weapon);
+    size_t old=ua.weaponAmmo.size();
+    ua.weaponAmmo.resize(slots.size());ua.weaponReserve.resize(slots.size());ua.weaponCooldowns.resize(slots.size());ua.weaponReloads.resize(slots.size());
+    for(size_t n=old;n<slots.size();++n){ua.weaponAmmo[n]=slots[n].magazine;ua.weaponReserve[n]=slots[n].reserveAmmo;}
+    for(const auto& weapon:weapons){
+      const size_t n=size_t(weaponSlot(ua.type,weapon.id));
+      ua.weaponCooldowns[n]=std::max(0.0,ua.weaponCooldowns[n]-simulationTickSeconds);
+      if(ua.weaponReloads[n]>0){
+        ua.weaponReloads[n]=std::max(0.0,ua.weaponReloads[n]-simulationTickSeconds);
+        if(ua.weaponReloads[n]==0){int rounds=std::min(weapon.magazine,ua.weaponReserve[n]);ua.weaponAmmo[n]=rounds;ua.weaponReserve[n]-=rounds;}
+      }
+      if(ua.weaponAmmo[n]<=0){if(ua.weaponReloads[n]==0&&ua.weaponReserve[n]>0)ua.weaponReloads[n]=weapon.reloadSeconds;continue;}
+      if(ua.weaponCooldowns[n]>0||ua.weaponReloads[n]>0)continue;
+      int target=-1;double nearest=std::numeric_limits<double>::max();
+      for(size_t b=0;b<state.units.size();++b){
+        const auto& ub=state.units[b];if(a==b||!ready(ub)||ua.owner==ub.owner||!weaponTargets(weapon,ub.type))continue;
+        double d=distanceKm(ua.position,ub.position);
+        if(d>=weapon.minRangeKm&&d<=weapon.maxRangeKm&&d<nearest){nearest=d;target=int(b);}
+      }
+      if(target<0)continue;
+      --ua.weaponAmmo[n];ua.weaponCooldowns[n]=weapon.cooldownSeconds;
+      double hit=weapon.damage*(.35+.65*ua.health/100);
+      if(weapon.projectileSpeedKmPerSecond<=0){
+        damage[target]+=hit*(1-unitProtection(state.units[target]));
+        Engagement trace;trace.origin=ua.position;trace.target=state.units[target].position;trace.attacker=int(a);trace.defender=target;trace.weaponId=weapon.id;trace.targetMask=weapon.targetMask;trace.total=trace.remaining=simulationTickSeconds;trace.damage=0;
+        if(state.engagements.size()<4096)state.engagements.push_back(trace);
+      }
+      else {
+        Engagement shot;shot.origin=ua.position;shot.target=state.units[target].position;shot.attacker=int(a);shot.defender=target;shot.weaponId=weapon.id;shot.targetMask=weapon.targetMask;shot.damage=hit;shot.total=shot.remaining=std::max(simulationTickSeconds,nearest/weapon.projectileSpeedKmPerSecond);shot.impactRadiusKm=weapon.impactRadiusKm;shot.guided=weapon.id=="atgm"||weapon.id=="anti_ship"||weapon.id=="asw_torpedo"||weapon.id=="sub_torpedo"||weapon.id=="cruise"||weapon.id=="ground_missile";
+        if(state.engagements.size()<4096)state.engagements.push_back(shot);
+      }
     }
   }
   for(size_t i=0;i<state.units.size();++i){

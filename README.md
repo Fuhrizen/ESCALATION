@@ -2,7 +2,7 @@
 
 A native C++17 / OpenGL 3.3 strategy prototype about building a nation before committing it to war. Inspired by the conventional/nuclear escalation of **ICBM: Escalation** and the map-led national management of **State of Command**, with original code and presentation.
 
-Version 0.6.1 focuses on **readable command, deliberate combat pacing and manufacture-before-placement**. Units use shared kilometre-based capabilities; research and construction are controlled by a weight slider and completion estimates. Unit and building inspection uses paired bottom-right capability and selection boxes. Completed units and buildings appear in the permanent icon rail; circular controls open dedicated pages. Major roads, decorative rivers, proportional typography and original vector icons are bundled offline.
+Version 0.7.0 adds naval warfare and richer geographic presentation to **readable command, deliberate combat pacing and manufacture-before-placement**. Units use shared kilometre-based capabilities; research and construction are controlled by a weight slider and completion estimates. Unit and building inspection uses paired bottom-right capability and selection boxes. Completed units and buildings appear in the permanent icon rail; circular controls open dedicated pages. Major roads, decorative rivers, proportional typography and original vector icons are bundled offline.
 
 ![Native map and national command](docs/map.png)
 
@@ -89,7 +89,7 @@ A compiler-only validation path is also provided (see the validation record for 
 python3 tools/verify.py
 ```
 
-For Linux render smoke tests without a desktop, install `libegl1 libgl1-mesa-dri`, build with `-DESCALATION_NULL_PLATFORM=ON`, and run `ctest`. This creates an actual EGL OpenGL context, renders ten UI/projection states and checks GL errors. The normal desktop build can also run `./build/escalation --smoke build/smoke`. PPM screenshots are generated locally, not published as releases.
+For Linux render smoke tests without a desktop, install `libegl1 libgl1-mesa-dri`, build with `-DESCALATION_NULL_PLATFORM=ON`, and run `ctest`. This creates an actual EGL OpenGL context, renders seventeen UI/projection states and checks GL errors. The normal desktop build can also run `./build/escalation --smoke build/smoke`. PPM screenshots are generated locally, not published as releases.
 
 ## First campaign
 
@@ -160,3 +160,11 @@ Air/naval production, unit combat and sea transport have been removed from activ
 ### Layout corrections (0.6.1)
 
 Management and research pages reserve a shared navigation-safe gutter. Fabrication uses the full page with no popup border or rounded frame; its card grid retains a minimum readable cell width. The ready inventory rail has no background or full-height border, and quantity badges stay inside their tiles. Unit range values remain in inspection beside the translucent map circle; the redundant floating weapon-range label is removed. All native screenshots have been regenerated for this version.
+
+### Geography and naval combat (0.7.0)
+
+The world surface now blends public-domain elevation, latitude, coastal shelves and restrained faction colors. Close zoom reveals original raised city clusters and symbolic Eiffel Tower, Liberty and Giza landmarks. Select a city to inspect its reference population, control and occupation status; these modern source figures are not historical census estimates.
+
+Naval research unlocks shipyards, destroyers, submarines and distinct weapon upgrades. Completed ships deploy beside a friendly operational shipyard and follow ocean routes with queued orders and arrival estimates. Return to shipyard repairs and rearms after 30 uninterrupted seconds nearby while disengaged. Ships do not occupy land objectives.
+
+Each weapon has its own target types, minimum/maximum range, damage, cooldown, magazine and reserves. Guns, anti-ship missiles, ASW weapons, torpedoes and cruise missiles can serve different targets on one platform. Guided projectiles follow their target; artillery shells retain their aimed impact point. Inspection shows each weapon and matching range circles. Aircraft, carriers, amphibious transports, sonar detection and interception remain future work. See [reference and design decisions](docs/ICBM_NAVAL_MAP.md).
