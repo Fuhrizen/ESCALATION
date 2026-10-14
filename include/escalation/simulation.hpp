@@ -72,6 +72,8 @@ namespace escalation {
     int tier,year;
     double cost;
     std::vector<int> prerequisites;
+    std::string sourceKey,sourceImage,sourceCategory;
+    double sourceLevel=0,sourcePoints=0,levelContribution=0;
   };
   std::vector<Tech> makeTechTree();
   struct Region {
@@ -157,6 +159,7 @@ namespace escalation {
     }
     double connection(int region) const;
     double researchCost(int tech) const;
+    double researchLevel() const;
     double researchETA(int tech) const;
     double buildingETA(Facility type) const;
     double buildingETA(size_t queueIndex) const;

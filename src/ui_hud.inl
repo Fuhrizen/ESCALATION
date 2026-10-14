@@ -70,7 +70,9 @@
     ImGui::SetNextWindowPos({0,0});ImGui::SetNextWindowSize({w,hudHeight()});
     ImGui::Begin("Main HUD",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoBackground|ImGuiWindowFlags_NoScrollbar);
     if(button("Menu"))openPause();ImGui::SameLine();if(screen==Game){flag(sim.state.player,{23*s,16*s});ImGui::SameLine();ImGui::TextUnformatted(world.countries[sim.state.player].name.c_str());ImGui::SameLine(0,18*s);ImGui::TextUnformatted(campaignDate().c_str());
-      float aw=std::min(320*s,w*.32f);ImGui::SetCursorPos({w-aw-14*s,4*s});allocationBar(aw,true);
+      float aw=std::min(320*s,w*.32f),start=ImGui::GetItemRectMax().x+24*s,space=w-aw-30*s-start;
+      if(space>140*s){double level=sim.researchLevel();ImGui::SetCursorScreenPos({start,5*s});ImGui::Text("TECH LEVEL %.2f",level);ImGui::SetCursorScreenPos({start,29*s});ImGui::ProgressBar(float(level>=10?1:level-std::floor(level)),{std::min(210*s,space),5*s},"");}
+      ImGui::SetCursorPos({w-aw-14*s,4*s});allocationBar(aw,true);
     }else{ImGui::SameLine();ImGui::TextUnformatted("ESCALATION / Select a nation");}
     ImGui::End();ImGui::PopStyleVar(2);if(screen==Game&&panel==None&&noticeRemaining>0){auto*d=ImGui::GetForegroundDrawList();ImVec2 p{readyRailWidth(h)+12*s,hudHeight()+8*s};float wrap=std::min(550*s,w-p.x-16*s);d->AddText(ImGui::GetFont(),ImGui::GetFontSize(),{p.x+1,p.y+1},IM_COL32(0,0,0,240),message.c_str(),nullptr,wrap);d->AddText(ImGui::GetFont(),ImGui::GetFontSize(),p,IM_COL32(229,238,233,255),message.c_str(),nullptr,wrap);}if(screen==Game){readyRail(h);auto*d=ImGui::GetBackgroundDrawList();d->AddRectFilledMultiColor({0,h-24*s},{w,h},IM_COL32(5,94,121,0),IM_COL32(5,94,121,0),IM_COL32(5,94,121,150),IM_COL32(5,94,121,150));auto date=campaignDate();auto size=ImGui::CalcTextSize(date.c_str());d->AddText({(w-size.x)*.5f,h-22*s},IM_COL32(183,224,238,255),date.c_str());}
   }

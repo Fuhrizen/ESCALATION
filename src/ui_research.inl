@@ -166,7 +166,7 @@
       ImGui::PushStyleColor(ImGuiCol_WindowBg,{.025f,.07f,.11f,.99f});ImGui::PushStyleColor(ImGuiCol_Border,{.21f,.51f,.69f,1});
       ImGui::Begin("##researchdetails",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings);
       if(titleFont)ImGui::PushFont(titleFont);ImGui::TextWrapped("%s",tech.name.c_str());if(titleFont)ImGui::PopFont();ImGui::Spacing();wrapped(tech.effect);
-      ImGui::TextColored(muted,"Reference era: %d",tech.year);
+      if(tech.sourceLevel>0){ImGui::TextColored(muted,"Technology level: %.1f / current %.2f",tech.sourceLevel,sim.researchLevel());ImGui::Text("Research points: %.0f",tech.sourcePoints);}else ImGui::TextColored(muted,"Reference era: %d",tech.year);
       for(int p:tech.prerequisites)if(visible(p))ImGui::TextWrapped("Requires: %s",sim.techs[p].name.c_str());
       if(s.completed[researchSelected])ImGui::TextColored(accent,"Capability complete");
       else if(qi>=0){auto eta=sim.researchETA(researchSelected);ImGui::TextWrapped("%s: %s",qi==0?"Remaining":"Ready in",std::isfinite(eta)?durationText(eta).c_str():"Paused");if(button("Remove from queue"))sim.removeResearch(size_t(qi));}

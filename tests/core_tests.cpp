@@ -111,7 +111,10 @@ int main(){try{
   check(!s.deployUnit(UnitType::Infantry,{-30,0})&&s.readyUnitCount(UnitType::Infantry)==1,"invalid deployment preserves ready inventory");
   check(s.deployUnit(UnitType::Infantry,s.state.regions[home].center)&&s.readyUnitCount(UnitType::Infantry)==0,"controlled land deployment consumes ready inventory");
   check(s.available(1)&&s.available(2),"sibling research paths available independently");
-  check(s.researchCost(2)>s.techs[2].cost,"future tech carries cost premium");
+  check(s.researchCost(58)>s.techs[58].cost,"advanced extracted level carries cost premium");
+  double advancedCost=s.researchCost(58);s.state.completed[13]=true;
+  check(s.researchCost(58)<advancedCost,"completed mapped research reduces ahead-of-level cost");s.state.completed[13]=false;
+  check(s.techs[2].sourceKey=="Weapon_Modernization"&&s.techs[2].sourcePoints==15,"supplied points and keys reach native tree");
   check(s.queueResearch(2),"future tech available without year blocking");
   double premium=s.state.research.front().cost;s.state.day+=365*25;s.tick();
   near(s.state.research.front().cost,premium,"research price fixed at queue time");
@@ -182,6 +185,8 @@ int main(){try{
   near(loaded.state.buildingQueue.front().progress,12.5,"manufacture progress save roundtrip");
   check(loaded.state.buildingInventory[int(Facility::Laboratory)]==2,"ready inventory save roundtrip");
   near(loaded.state.research.front().cost,premium,"queued premium save roundtrip");
+  auto legacyCheap=readJson(save);legacyCheap.get<Object>()["queue"].get<Array>()[0].get<Object>()["cost"]=num(2.0);legacyCheap.get<Object>()["queue"].get<Array>()[0].get<Object>()["progress"]=num(0);writeSave(save,legacyCheap);
+  Simulation frozenCheap(w);frozenCheap.load(save);near(frozenCheap.state.research.front().cost,2.0,"legacy queued cost below new base remains frozen");s.save(save);
   s.refreshRates();near(loaded.state.researchRate,s.state.researchRate,"restored rates describe restored jobs");
   for(int n=0;n<50;++n){s.tick();loaded.tick();}
   near(loaded.state.research.front().progress,s.state.research.front().progress,"restored research continues deterministically");
@@ -240,7 +245,7 @@ int main(){try{
   s.save(save);auto valid=readJson(save),bad=valid;bad.get<Object>()["stock"]=str("broken");rejects(bad,"wrong type rejected");
   bad=valid;bad.get<Object>()["settlements"].get<Array>()[0].get<Object>()["region"]=num(999);rejects(bad,"invalid settlement index rejected");
   bad=valid;bad.get<Object>()["settlements"]=Json(Array{});rejects(bad,"missing regional objectives rejected");
-  bad=valid;bad.get<Object>()["queue"].get<Array>()[0].get<Object>()["cost"]=num(1);rejects(bad,"invalid research premium rejected");
+  bad=valid;bad.get<Object>()["queue"].get<Array>()[0].get<Object>()["cost"]=num(0);rejects(bad,"non-positive research cost rejected");
   bad=valid;bad.get<Object>()["units"].get<Array>()[0].get<Object>()["waypoints"]=Json(Array{Json(Array{num(0),num(100)})});rejects(bad,"invalid movement geometry rejected");
   bad=valid;bad.get<Object>()["warheadsQueued"]=num(1);bad.get<Object>()["warheadWork"]=num(0);rejects(bad,"invalid nuclear production state rejected");
   bad=valid;bad.get<Object>()["buildingInventory"].get<Array>()[int(Facility::Factory)]=num(1000);rejects(bad,"ready plus queued building cap rejected");
